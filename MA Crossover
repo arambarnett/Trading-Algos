@@ -1,0 +1,68 @@
+
+## This is the classic Moving Average Crossover strategy. You can read more about
+## it in our guide, here: https://tradewave.net/help/trading/
+
+## Click the 'API Reference' button on the right to learn more about how to
+## structure your strategies, or click 'Help' if you're new to trading or need
+## help learning to code with Python.
+
+# You can use the global scope to define constants, but don't try to use this
+# space to store variables which will change between ticks. In that case you
+# should use the 'storage' object (see below).
+THRESHOLD = 0.005 # buy and sell threshold
+INTERVAL = 43200 # candle size (in seconds)
+SHORT = 10 # short moving average period 
+LONG = 90 # long moving average period
+
+# This is where we set up any variables we'll need for the strategy. This function
+# is only called once and you shouldn't use it to try to access market data or
+# place orders, because at this point the backtest hasn't yet started.
+def initialize():
+    
+    # The 'storage' object can be used to persist variables between ticks. You
+    # should try to use it wherever you can, because if you're live trading we
+    # can use it to restore your bot in the rare case that our servers go down.
+    storage.invested = storage.get('invested', False)
+
+# The tick() function must always be defined by a strategy. It is called
+# repeatedly as new data becomes available. During backtesting, this means
+# that it is called rapidly across the data for the range you selected. For
+# example, if you select a 24-hour range and 1-hour tick interval, tick() is
+# called 24 times.
+def tick():
+    # Calculate a short-term moving average.
+    short_term = data(interval=INTERVAL).btc_usd.ma(SHORT)
+    
+    # Long-term moving average. It's smoother than short-term MA but takes
+    # longer to show trends.
+    long_term = data(interval=INTERVAL).btc_usd.ma(LONG)
+    
+    # Calculate a percentage difference between the two lines
+    diff = 100 * (short_term - long_term) / ((short_term + long_term) / 2)
+    
+    # If the difference is positive (i.e. the short-term line has crossed
+    # above the long-term line) and it meets our threshold criteria, and
+    # we are not already holding BTC, place a buy order to purchase as
+    # much BTC as we can, given how much USD is in our current portfolio.
+    if diff >= THRESHOLD and not storage.invested:
+        buy(pairs.btc_usd)
+        storage.invested = True
+    
+    # Otherwise, if we're holding BTC and the short-term line crosses below
+    # the long-term line (at a percentage greater than our threshold) then
+    # sell all of our BTC holdings.
+    elif diff <= -THRESHOLD and storage.invested:
+        sell(pairs.btc_usd)
+        storage.invested = False
+        
+    # Plot our moving averages to the chart
+    plot('short_term', short_term) # You can use any string to label the line
+    plot('long_term', long_term)
+
+# This is an optional function called at the end of a backtest, or when your  
+# live bot is stopped. This is a good place to tidy up your portfolio by
+# closing any open positions and cancelling orders.
+def stop():
+    # If we're holding BTC, clear our position back to USD.
+    if storage.invested:
+        sell(pairs.btc_usd)
