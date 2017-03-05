@@ -1,0 +1,2 @@
+# Moving-Average-Cross-over
+We plot a short-term and long-term Simple Moving Average. The long-term indicator (longer period) results in a smoother line that takes longer to show trends.  The moment at which the two lines cross, given a 0.5% threshold, is interpreted as a trading signal. If the short-term line (shorter period) crosses above the long-term line (longer period) then the strategy buys. When the opposite happens it sells.
