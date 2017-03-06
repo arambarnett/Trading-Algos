@@ -1,0 +1,31 @@
+import talib
+def OBV():
+    instrument      = pairs.btc_usd
+    C               = data[instrument].warmup_period('close')
+    V               = data[instrument].warmup_period('volume')  
+    OBV_array       = talib.OBV(C,V)
+    return OBV_array
+
+def tick():
+
+    OBV_array = OBV()
+    T               = 60            # PERIOD (10 to 250, default 60)
+    W               = 2             # CHANNEL WIDTH (default 0.002)
+    SLOPE           = talib.LINEARREG_SLOPE(OBV_array, timeperiod=T)[-1]
+    STDDEV          = talib.STDDEV(OBV_array, timeperiod=T)[-1]
+
+    storage.Z       = storage.get('Z', OBV_array[-1])
+    storage.SLOPE   = storage.get('SLOPE', 0)
+
+    if storage.Z > OBV_array[-1] + STDDEV*W:
+        storage.SLOPE = SLOPE        
+        storage.Z = OBV_array[-1]
+    elif storage.Z < OBV_array[-1] - STDDEV*W:
+        storage.SLOPE = SLOPE         
+        storage.Z = OBV_array[-1]
+    storage.Z = Decimal(storage.Z) + Decimal(storage.SLOPE)    
+    
+    plot('Z', storage.Z, secondary=True)
+    plot('OBV', OBV_array[-1], secondary=True)
+    plot('F', 300)
+    plot('C', 30000, secondary=True)
