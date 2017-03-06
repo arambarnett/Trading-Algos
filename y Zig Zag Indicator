@@ -1,0 +1,33 @@
+
+def initialize():
+    
+    storage.Z       = 0
+    storage.Zh      = 0
+    storage.Zl      = 0
+
+
+def tick():
+    
+    vwap            = data.btc_usd.vwap(2)
+    high            = data.btc_usd.high
+    low             = data.btc_usd.low
+
+    if storage.Z > Decimal(1.02)*vwap:
+        storage.Z = vwap
+    elif Decimal(1.02)*storage.Z < vwap:
+        storage.Z = vwap
+        
+    if high > storage.Zh:
+        storage.Zh = high
+    elif storage.Zh > Decimal(1.05)*high:
+        storage.Zh = Decimal(1.02)*high        
+
+    if low < storage.Zl:
+        storage.Zl = low
+    elif Decimal(1.05)*storage.Zl < low:
+        storage.Zl = Decimal(0.98)*low
+
+    plot('VWAP',vwap)        
+    plot('Z', storage.Z)
+    plot('Zh', storage.Zh)
+    plot('Zl', storage.Zl)
