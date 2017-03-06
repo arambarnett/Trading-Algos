@@ -1,0 +1,46 @@
+import talib
+import numpy as np
+
+N1          = 10    #"Channel Length")
+N2          = 21    #"Average Length")
+OBLEVEL1    = 60    #"Over Bought Level 1")
+OBLEVEL2    = 53    #"Over Bought Level 2")
+OSLEVEL1    = -60   #"Over Sold Level 1")
+OSLEVEL2    = -53   #"Over Sold Level 2")
+
+
+def wavetrend(n1, n2, obLevel1, obLevel2, osLevel1, osLevel2):
+
+    storage.ap = storage.get('ap', 0)
+    if storage.ap == 0:
+        ap = 0
+    else:
+        ap = np.array(storage.ap)
+    if storage.ap == 0:
+        C = 200
+        ap_one  = [float(   data.btc_usd[-(x + 1)].high + 
+                            data.btc_usd[-(x + 1)].low + 
+                            data.btc_usd[-(x + 1)].close
+                            ) / 3 for x in range(C,0,-1)][-C:]
+        ap_one = np.array(ap_one)        
+                
+        if ap == 0:
+            ap = ap_one
+        else:
+            ap = np.hstack((ap, ap_one))
+            
+    hlc3 = float(   data.btc_usd.high + 
+                    data.btc_usd.low + 
+                    data.btc_usd.close) / 3     
+    ap  = np.hstack((ap, hlc3))
+    esa = talib.MA(ap, timeperiod=n1, matype=1)
+    ap = ap.tolist()
+    storage.ap = ap[-1001:]
+    
+    return esa
+    
+def tick():     
+    
+    z = wavetrend(N1, N2, OBLEVEL1, OBLEVEL2, OSLEVEL1, OSLEVEL2)
+
+    plot('esa', z[-1])
