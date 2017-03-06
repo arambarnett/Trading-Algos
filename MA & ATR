@@ -1,0 +1,111 @@
+"""
+Simple strategy based on ATR and MA.
+https://www.dukascopy.com/fxcomm/fx-article-contest/?A-Winning-Strategy-Using-Moving=&action=read&id=618&language=en
+
+About T/P and S/L levels:
+http://www.ufxmarkets.com/in/stop_losses_and_take_profit_orders
+
+"""
+
+primary_pair        = pairs.btc_usd
+LENGTH              = 15
+ATR_BASE            = 0.0013
+PIP                 = 0.01*0.01
+
+def initialize():
+     storage.invested = True
+
+def tick():
+    primary = data[info.primary_pair]
+    
+    close_price = primary.close
+    
+    open_price = primary.open
+    
+    ma_high = sum(primary.period(LENGTH,"high")) / LENGTH
+    ma_low = sum(primary.period(LENGTH,"low")) / LENGTH
+    
+    atr_ind = primary.atr(LENGTH) # Value of ATR indicator.
+    
+    
+    #log(close_price)
+    
+    stop_loss_level = (atr_ind*Decimal(1.5)) + open_price + Decimal(10*PIP)
+    take_profit_level = (atr_ind*Decimal(3.0)) + open_price
+    
+    #log(atr_ind)
+    
+    if atr_ind > ATR_BASE and close_price > ma_high and storage.invested:
+        try:
+            buy(primary_pair)
+            storage.invested = False
+        except TradewaveFundsError, e:
+            log('Not enough funds, to buy!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place buy order: %s' % e.message) 
+            
+    elif atr_ind > ATR_BASE and close_price < ma_low and not storage.invested:
+        try:
+            sell(primary_pair)
+            storage.invested = True
+        except TradewaveFundsError, e:
+            log('Not enough funds, to sell!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place sell order: %s' % e.message)
+    
+    
+    # Using the stop loss and take profit levels.
+    # If the close price grows bigger than the S/L level then buy.
+    elif close_price > stop_loss_level and storage.invested:
+        try:
+            buy(primary_pair)
+            storage.invested = False
+        except TradewaveFundsError, e:
+            log('Not enough funds, to buy!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place buy order: %s' % e.message)
+    
+    # If the close price falls below the S/L level then sell
+    elif close_price < stop_loss_level and not storage.invested:
+        try:
+            sell(primary_pair)
+            storage.invested = True
+        except TradewaveFundsError, e:
+            log('Not enough funds, to buy!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place buy order: %s' % e.message)
+    
+    # If the price grows bigger than the T/P level, then sell.
+    elif close_price > take_profit_level and not storage.invested:
+        try:
+            sell(primary_pair)
+            storage.invested = True
+        except TradewaveFundsError, e:
+            log('Not enough funds, to buy!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place buy order: %s' % e.message)        
+    
+    # If the price falls below the T/P level, then buy.
+    elif close_price < take_profit_level and storage.invested:
+        try:
+            buy(primary_pair)
+            storage.invested = False
+        except TradewaveFundsError, e:
+            log('Not enough funds, to buy!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place buy order: %s' % e.message)
+    
+    
+    plot('high_ma', ma_high)
+    plot('low_ma', ma_low)
+    #plot('ATR_base', ATR_BASE)
+    #plot('ATR_indicator', atr_ind)
+    
+
+def stop():
+     if not storage.invested:
+        try:
+            sell(primary_pair)
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place sell order: %s' % e.message)
+    
