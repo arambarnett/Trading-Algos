@@ -1,0 +1,45 @@
+'''
+This is a basic implementation of candle aggregation in 3 modes; 
+smooth, wiggly, and stepwise
+
+The second y-axis plots the difference (alpha)
+
+litepresence
+'''
+
+AGGREGATION = 3600
+
+def tick():
+    
+
+
+    ratio = AGGREGATION / info.interval
+    storage.stepwise = storage.get('stepwise', data.btc_usd.close)
+    if (info.tick % ratio) == 0:
+        storage.stepwise = data(interval=AGGREGATION).btc_usd.ma(10)
+    
+    stepwise = storage.stepwise            
+    wiggly = data(interval=AGGREGATION, smooth=False).btc_usd.ma(10)
+    smooth = data(interval=AGGREGATION, smooth=True).btc_usd.ma(10)
+        
+    plot('stepwise', stepwise)
+    plot('wiggly', wiggly)
+    plot('smooth', smooth)
+    
+    if info.tick == 0:
+        log('aggregation: %s' % AGGREGATION)
+        log('tick size: %s' % info.interval)
+        
+
+    stepwise_alpha = stepwise - smooth
+    
+    wiggly_alpha = wiggly - smooth
+    
+    width = wiggly - stepwise
+    
+    
+    plot("width", width, secondary = True)
+    plot("stepwise_alpha", stepwise_alpha, secondary = True)
+    plot("wiggly_alpha", wiggly_alpha, secondary = True)
+    plot("zero", 0, secondary=True)
+    plot("bottom", -10, secondary=True)
