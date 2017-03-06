@@ -1,0 +1,299 @@
+# OBV Lite Bot 1.4 by sungkhum for Tradewave
+# 
+# 1 hour BTC/USD on any exchange (best on BTC-e)
+#
+# Based on an idea created by LazyBear: https://www.tradingview.com/v/D8ld7sgR/
+# LazyBear top BTC jar: 1Cs5DJ7DGqYVBWaAt5rPuRcD66ULgVCFnx
+#
+# Sungkhum tip BTC jar: 1Pu3a4kNEPYiszh8xFv3x7JqWrpbDs28XK
+# Litepresence tip LTC jar: LL92nc7U8dYeVfdG5cmQwPsSDEYPLphY7B
+#
+# **** THIS IS NOT LIVE TESTED AND MAY STILL CONTAIN BUGS ****
+#
+# NOTE: This bot will not trade very often, but tries to only trade when the 
+# probability of a winning trade is high
+
+import talib
+import numpy as np
+OBV_AGGREGATION     = 3600
+TICK_SIZE           = info.interval
+INSTRUMENT          = pairs.btc_usd
+OBV_BUY_COUNT       = 5
+
+def on_balance_volume(aggregation, instrument):
+    
+    can_sell = False
+    can_buy = False
+    storage.obv_uptrend_count = storage.get('obv_uptrend_count', 0)
+    storage.obv_downtrend_count = storage.get('obv_downtrend_count', 0)
+    storage.obv = storage.get('obv', 0)
+    storage.the_number = storage.get('the_number', 0)
+    storage.current_price_slope = storage.get('current_price_slope', 0)
+    storage.current_obv_slope = storage.get('current_obv_slope', 0)
+    storage.price_slope_drop = storage.get('price_slope_drop', 0)
+    storage.obv_slope_drop = storage.get('obv_slope_drop', 0)
+    storage.obv_slope_increase = storage.get('obv_slope_increase', 0)
+    storage.price_slope_increase = storage.get('price_slope_increase', 0)
+    storage.steps_for_price_spike = storage.get('steps_for_price_spike', 0)
+    storage.counter_for_price_spike = storage.get('counter_for_price_spike', 0)
+    storage.wait_for_sar_uptrend = storage.get('wait_for_sar_uptrend', False)
+    storage.price_spike_sell_no_obv = storage.get('price_spike_sell_no_obv', False)
+    storage.just_sold = storage.get('just_sold', False)
+    storage.sold_sar_hold = storage.get('sold_sar_hold', False)
+    storage.ma_slope = storage.get('ma_slope', False)
+    the_obv = np.array(storage.obv)
+
+    price = data(interval=OBV_AGGREGATION).btc_usd.close
+    price_past = data(interval=OBV_AGGREGATION).btc_usd[-1].close
+    
+    if info.tick == 0:
+        i = 2
+        get_price = 249
+        while get_price > 1:
+            storage.prev_close = data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-((get_price) - 1)]
+            #what_the_price = np.hstack((what_the_price,data.btc_usd.period(get_price, 'close')))
+            close = data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-(get_price)]
+            if close > storage.prev_close:
+                storage.the_number = storage.the_number + data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('volume')[-(get_price)]
+                the_obv = np.hstack((the_obv,storage.the_number))
+            elif close < storage.prev_close: 
+                storage.the_number = storage.the_number - data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('volume')[-(get_price)]
+                the_obv = np.hstack((the_obv,storage.the_number))
+            
+            get_price = get_price - 1
+        
+    
+
+    close = data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-1]
+    storage.prev_close = data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-2]
+
+    if close > storage.prev_close:
+        storage.the_number = storage.the_number + data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('volume')[-1]
+        the_obv = np.hstack((the_obv,storage.the_number))
+        #log('Price: %f Current HIGHER' % (data[instrument].warmup_period('close')[-1]))
+        #log('OBV: %f Volume: %f' % (the_obv[-1], data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('volume')[-1]))
+    elif close < storage.prev_close: 
+        storage.the_number = storage.the_number - data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('volume')[-1]
+        the_obv = np.hstack((the_obv,storage.the_number))
+        #log('Price: %f Current LOWER' % (data[instrument].warmup_period('close')[-1]))
+        #log('OBV: %f Volume: %f' % (the_obv[-1], data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('volume')[-1]))
+    #else:
+    #    log('Price: %f Current SAME' % (data[instrument].warmup_period('close')[-1]))
+    #    log('OBV: %f Volume: %f' % (the_obv[-1], data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('volume')[-1]))
+
+    close = data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')
+    cci = talib.CCI(close,close,close,timeperiod=20)
+
+    if cci[-1] >= 0:
+        signal = 500
+    if cci[-1] < 0:
+        signal = -500
+        
+    obv_lite = the_obv[-1]
+    storage.obv_lite_past = the_obv[-2]
+    #log(the_obv.size)
+    #log(the_obv[-200])
+    obv_ema_here = talib.MA(the_obv, timeperiod=13, matype=1)
+    obv_ema_here_short = talib.MA(the_obv, timeperiod=3, matype=1)
+    the_ma = data(interval=OBV_AGGREGATION)[INSTRUMENT].ma(3)
+    
+    the_ma_past = data(interval=OBV_AGGREGATION)[INSTRUMENT][-1].ma(3)
+    storage.ma_slope = round(100*(the_ma - the_ma_past))/100
+    obv_ema_slope = round(100*(obv_ema_here_short[-1] - obv_ema_here_short[-2]))/100
+    log('MA Slope: %f OBVEMA Slope: %f' % (storage.ma_slope,obv_ema_slope))
+    plot('ma', the_ma)
+    plot('obv_ema', obv_ema_here[-1], secondary = True)
+    
+    storage.obv = the_obv.tolist()
+
+    plot('obvlite', obv_lite, secondary=True)    
+    
+    obv_ratio       = aggregation / info.interval
+    
+    storage.current_price_slope = round(100*(price - price_past))/100
+    storage.current_obv_slope = round(100*(the_obv[-1] - the_obv[-2]))/100
+    #log('OBV Slope: %f Price Slope: %f' % (storage.current_obv_slope,storage.current_price_slope))
+    
+    #Change formula based on negative or positive numbers
+    if obv_ema_here[-1] < 0 and obv_lite < 0:
+        #log('both negative')
+        obv_diff = ((abs(obv_ema_here[-1]) - abs(obv_lite)) / abs(obv_lite)) * 100
+    elif obv_ema_here[-1] >= 0 and obv_lite >= 0:
+        #log('both positive')
+        obv_diff = ((obv_ema_here[-1] - obv_lite) / obv_lite) * 100
+    else:
+        obv_diff = ((obv_ema_here[-1] - obv_lite) / obv_lite) * 100
+        #log('Neither OBV: %f EMA: %f' % (obv_lite,obv_ema_here[-1]))
+    
+    #log('OBV Diff: %f' % (obv_diff))
+
+    #Change formula based on negative or positive numbers
+    if storage.obv_lite_past < 0 and obv_lite < 0:
+        #log('both negative')
+        obv_percent_change = ((storage.obv_lite_past - obv_lite) / storage.obv_lite_past) * 100
+    elif storage.obv_lite_past >= 0 and obv_lite >= 0:
+        #log('both positive')
+        obv_percent_change = ((storage.obv_lite_past - obv_lite) / storage.obv_lite_past) * 100
+        if storage.obv_lite_past < obv_lite:
+            obv_percent_change = abs(obv_percent_change)
+    elif storage.obv_lite_past < 0 and obv_lite >= 0:
+        obv_percent_change = ((storage.obv_lite_past - obv_lite) / storage.obv_lite_past) * 100
+        #log('First neg second pos')
+    elif storage.obv_lite_past >= 0 and obv_lite < 0:
+        obv_percent_change = ((storage.obv_lite_past - obv_lite) / storage.obv_lite_past) * 100
+        obv_percent_change = -abs(obv_percent_change)
+        #log('First pos Second Neg')
+    price_obv_percent_div = 100
+    price_percent_change = ((price_past - price) / price_past) * 100
+    if price_past < price:
+        price_percent_change = abs(price_percent_change)
+    if obv_percent_change != 0 and price_percent_change != 0:
+        price_obv_percent_div = Decimal(obv_percent_change) / Decimal(price_percent_change)
+        #log('OBV Percent Div %f' % (price_obv_percent_div))
+    #log('OBV Percent: %f Price Percent: %f' % (obv_percent_change,price_percent_change))
+    #log('OBV: %f OBV Past: %f' % (obv_lite,storage.obv_lite_past))
+    
+    #reset after spike no OBV buy
+    if storage.price_spike_sell_no_obv and obv_lite < obv_ema_here[-1]:
+        storage.price_spike_sell_no_obv = False
+    
+    #if price_percent_change > 9 and price_obv_percent_div < 5:
+    if price_percent_change > 9 and (Decimal(obv_ema_slope) / Decimal(storage.ma_slope)) < 200:
+        can_sell = True
+        log('Price Spike without OBV Spike')
+        storage.obv_uptrend_count = 0
+        storage.price_spike_sell_no_obv = True
+    
+    sar = data.btc_usd.sar(acceleration=0.005, max_acceleration=2)
+    sar_past = data.btc_usd[-1].sar(acceleration=0.005, max_acceleration=2)
+    plot('sar', sar)
+    if storage.wait_for_sar_uptrend and sar < price:
+        storage.wait_for_sar_uptrend = False
+    
+    storage.price_slope_drop = storage.get('price_slope_drop', 0)
+    storage.obv_slope_drop = storage.get('obv_slope_drop', 0)
+    storage.obv_slope_increase = storage.get('obv_slope_increase', 0)
+    storage.price_slope_increase = storage.get('price_slope_increase', 0)
+    storage.counter_for_price_spike = storage.get('counter_for_price_spike', 0)
+    
+    if storage.current_price_slope < - 10:
+        storage.counter_for_price_spike = 1
+        storage.steps_for_price_spike = 1
+        log('Price Spike Step 1')
+    
+    if storage.steps_for_price_spike == 1 and storage.counter_for_price_spike < 3 and storage.current_obv_slope < -9000:
+        storage.counter_for_price_spike = storage.counter_for_price_spike + 1
+        storage.steps_for_price_spike = 2
+        log('Price Spike Step 2')
+    elif storage.counter_for_price_spike > 0:
+        storage.counter_for_price_spike = storage.counter_for_price_spike + 1
+    
+    if storage.counter_for_price_spike > 5:
+        storage.counter_for_price_spike = 0
+        storage.steps_for_price_spike = 0
+    
+    if storage.steps_for_price_spike == 2 and not storage.price_spike_sell_no_obv and storage.counter_for_price_spike < 5 and storage.current_obv_slope > 3000 and storage.current_price_slope > 10:
+        can_buy = True
+        storage.steps_for_price_spike = 0
+        storage.counter_for_price_spike = 0
+        #if sar > price:
+        #    storage.wait_for_sar_uptrend = True
+        log('Spike Price Buy')
+    
+
+    
+    if obv_lite > obv_ema_here[-1] and cci[-1] >= 0:
+        storage.obv_uptrend_count = storage.obv_uptrend_count + 1
+        storage.obv_downtrend_count = 0
+
+    if obv_lite < obv_ema_here[-1] and cci[-1] < 0:
+        storage.obv_downtrend_count = storage.obv_downtrend_count + 1
+        storage.obv_uptrend_count = 0
+        
+    if storage.obv_uptrend_count > 1:
+        price_diff = ((data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-1] - data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-OBV_BUY_COUNT]) / data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-OBV_BUY_COUNT]) * 100
+    
+    if storage.obv_uptrend_count > OBV_BUY_COUNT and not storage.price_spike_sell_no_obv and price_diff > 1.5 and portfolio.usd > 4:
+        can_buy = True
+        
+    if storage.sold_sar_hold and storage.obv_uptrend_count > 2 and not storage.price_spike_sell_no_obv and price_diff > 1.5 and portfolio.usd > 4:
+        can_buy = True
+        log('SAR HELD buy')
+
+    #if price_past <= storage.price_low and storage.obv_slope_down < -1200 and storage.price_slope_down < -6 and storage.current_obv_slope > 1000 and storage.current_price_slope > 5 and portfolio.usd > 1:
+    #    can_buy = True
+    #    log('Sharp Shift at Low Price Buy')
+
+        
+    if obv_lite < obv_ema_here[-1] and the_obv[-2] < obv_ema_here[-2] and obv_diff > 2 and portfolio.btc > 0.01:
+        can_sell = True
+        log('sell1')
+        
+    
+    if obv_lite < obv_ema_here[-1] and storage.obv_downtrend_count > 2 and obv_diff < -1 and portfolio.btc > 0.01:
+        can_sell = True
+        log('sell2')
+    
+    if obv_diff < -20 and obv_lite < obv_ema_here[-1] and the_obv[-2] < obv_ema_here[-2] and portfolio.btc > 0.01:
+        can_sell = True
+        log('sell3')
+        
+    if obv_lite < obv_ema_here[-1] and sar > price and portfolio.btc > 0.01:
+        can_sell = True
+        log('sell4')
+
+    
+    if storage.just_sold and sar < price:
+        storage.sold_sar_hold = True
+    else:
+        storage.just_sold = False
+        storage.sold_sar_hold = False
+        
+        
+        
+    
+        
+
+    return can_sell, can_buy
+
+
+def tick():
+    
+   
+    
+
+    #1h OBV Slope Bot
+    if info.tick % (60 / (info.interval / 60)) == 0 or info.tick == 0:
+        
+        
+        
+
+        obv_can_sell, obv_can_buy = on_balance_volume(OBV_AGGREGATION, INSTRUMENT)
+    
+        if obv_can_sell and not storage.wait_for_sar_uptrend and portfolio.btc > 0.01:
+            try:
+                order = sell(pairs.btc_usd)
+            except TradewaveFundsError, e:
+                log('Not enough funds!')
+            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                log('Unable to place buy order: %s' % e.message)
+            storage.obv_uptrend_count = 0
+            storage.just_sold = True
+
+
+        elif obv_can_buy and portfolio.usd > 1:
+            try:
+                order = buy(pairs.btc_usd)
+            except TradewaveFundsError, e:
+                log('Not enough funds!')
+            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                log('Unable to place buy order: %s' % e.message)
+            price_diff = ((data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-1] - data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-OBV_BUY_COUNT]) / data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-OBV_BUY_COUNT]) * 100
+            log('Price Increase: %f' % (price_diff))
+            storage.just_sold = False
+                
+                
+                
+        
+                
+        
