@@ -1,0 +1,62 @@
+"""
+Credit: litepresence @ https://discuss.tradewave.net/t/breakout-indicator/146
+
+Backtested for LTC/USD @ BTC-e on 1-hour ticks.
+"""
+
+import talib
+
+def email_order(order, subject=None):
+    order_dict = order.to_dict()
+    formatted = '\n'.join(['%s: %s' % (k, v) for k, v in order_dict.items()])
+    email(formatted, subject=subject)
+
+def initialize():
+    storage.invested = storage.get('invested', False)
+
+def tick():
+    n = 10
+    ni = 2
+    Limit = 6
+
+    PRICE = data.ltc_usd.ma(ni)
+    TOP = data.ltc_usd.period(n, 'high')
+    TOP = talib.MA(TOP, timeperiod=n)[-1]
+    BOTTOM = data.ltc_usd.period(n, 'low')
+    BOTTOM = talib.MA(BOTTOM, timeperiod=n)[-1]
+    TOPi = data.ltc_usd.period(ni, 'high')
+    TOPi = talib.MA(TOPi, timeperiod=ni)[-1]
+    BOTTOMi = data.ltc_usd.period(ni, 'low')
+    BOTTOMi = talib.MA(BOTTOMi, timeperiod=ni)[-1]  
+    V = Decimal(100) * Decimal(TOP - BOTTOM) / Decimal(PRICE)
+    Vi = Decimal(100) * Decimal(TOPi - BOTTOMi) / Decimal(PRICE)
+    Volatility = round(((V-Vi)*(V-Vi)*(data.ltc_usd.ma(ni) - data.ltc_usd.ma(n)))*Decimal(100))/100
+
+    if Volatility > Limit:
+        Breakout = 1
+        
+        if not storage.invested:
+            order = buy(pairs.ltc_usd)
+            storage.invested = True
+            email_order(order, subject='Breakout: BUY')
+        
+    elif Volatility < -Limit:
+        Breakout = -1
+        
+        if storage.invested:
+            order = sell(pairs.ltc_usd)
+            storage.invested = False
+            email_order(order, subject='Breakout: SELL')
+    else:
+        Breakout = 0   
+
+    log('Volatility %s' % (Volatility))
+    log('Breakout? %s' % (Breakout))
+
+    plot('Breakout', Breakout, secondary=True)
+    #plot('Volatility', Volatility, secondary=True)
+    plot('Price', PRICE)
+    
+def stop():
+    if storage.invested:
+        sell(pairs.ltc_usd)
