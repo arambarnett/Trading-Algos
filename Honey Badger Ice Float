@@ -1,0 +1,882 @@
+def banner():
+    
+    # Honey Badger v1.0 OPEN SOURCE Dec 2014
+    #
+    # litepresence
+    
+    # v2.0 Nov 5th 2015
+    # no changes to trade logic; new initialization protocol
+    
+    # v3.0 Dec 2, 2015
+    # Added Iceberg Module
+    # Added SMA Mesh PERIOD Scaling Coefficient
+    
+    '''
+    Your donations are appreciated and support development
+    BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME
+    
+    2000X PRO LEASES:  https://tradewave.net/marketplace/litepresence
+    '''
+
+    # UNTESTED LIVE - BETA - USE AT OWN RISK
+    # SUGGESTED LIVE TICK SIZE IS 1h
+
+    '''
+    Please read through recent pages of the support thread and 
+    
+    ** post questions IN THE SUPPORT THREAD for freeware help **
+    
+    FORUM SUPPORT:    
+    https://discuss.tradewave.net/t/the-honey-badger-support-thread/
+    '''
+
+    # Trades 2, 3, 30, 55, 60, 90, 150 12h moving avereges
+    # (crossover and slope)
+    # Built for BTCUSD on 1h ticks
+    # 80X BTC return Dec 18 2011 to Feb 15 2015 on 12h tick
+    #
+    # *** Much thanks to Tradewave!
+    # This backtest engine is a BEAST! ***
+
+    # JAN 14th 2015 1h PWNED
+    # 191 BTCe
+    # 184 Bitstamp
+    # 203 Bitfinex
+    # 193 Coinsetter
+    # ----------------
+    # 193 average
+
+    # JAN 26th 2015 1h PWNED
+    # 294 BTCe
+    # 304 Bitstamp
+    # 305 Bitfinex
+    # 303 Coinsetter
+    # ----------------
+    # 301 average
+
+    # The Honey Badger is NASTY!
+    
+    
+    # OH SNAPPPPP!!!
+    # JULY 10 2015 LTCUSD 1h PWNED
+    
+    # HONEY BADGER does't always eat breakfast, 
+    # but when he does he prefers cobra!
+    # Nov 4th 2015 BTCUSD 1h PWNED 
+    
+
+    '''
+    I lease a commercial maintained signal that is much more profitable
+
+    Tuned to over 2000X BTC Dec 2011 to current.  
+    Killin' it since deployed LIVE Dec 10th 2014.
+    
+    rpfpresence@gmail.com or tradewave private message for details
+    
+    LIVE ROI ACTUAL:     https://tradewave.net/strategy/BnplZAgHKS
+    
+    LEASES:     https://tradewave.net/marketplace/litepresence
+    LEASES:     https://tradewave.net/marketplace/litepresence
+    LEASES:     https://tradewave.net/marketplace/litepresence
+    LEASES:     https://tradewave.net/marketplace/litepresence
+    
+    LIVE ROI ACTUAL:     https://tradewave.net/strategy/BnplZAgHKS
+    
+    [2015-12-03 04:00:00] start date: 2014-12-10 05:00:00
+    [2015-12-03 04:00:00] start BTC value: 1.00
+    [2015-12-03 04:00:00] start USD value: 346.00
+    [2015-12-03 04:00:00] end BTC value: 1.93
+    [2015-12-03 04:00:00] end USD value: 690.46
+    [2015-12-03 04:00:00] trades 35
+    [2015-12-03 04:00:00] days 358.00
+    [2015-12-03 04:00:00] frequency 10.23 days/trade
+    [2015-12-03 04:00:00] ROI_assets 1.93X
+    [2015-12-03 04:00:00] ROI_currency 2.00X
+    [2015-12-03 04:00:00] ROI_BNH 1.03X
+    [2015-12-03 04:00:00] MAX DD......: -30.76 pct
+    [2015-12-03 04:00:00] MAX BNH DD..: -50.06 pct
+    [2015-12-03 04:00:00] >> Starting portfolio:
+    [2015-12-03 04:00:00] >> [1.00 BTC]
+    [2015-12-03 04:00:00] >> Closing portfolio:
+    [2015-12-03 04:00:00] >> [690.46161973 USD]
+    [2015-12-03 04:00:00] >> Profit: 344.46161973 USD (estimated)
+    '''
+
+    # BEFORE INITIALIZING **ANY** BOT LIVE, RUN A BACKTEST UP TO
+    # THE MOST RECENT DATA, IN THE TICK SIZE YOU INTEND TO DEPLOY.
+    # WHATEVER THE BOT IS HOLDING AT THE END OF THE TEST,
+    # POSITION YOUR HOLDINGS **THE SAME** MANUALLY AT YOUR EXCHANGE
+    # BEFORE STARTING YOUR LIVE TRADER.
+
+    # TO ENSURE THE MOST SMOOTH ENTRANCE WITH **ANY** AUTOMATED TRADER,
+    # BEGIN TRADING LIVE **SHORTLY AFTER** THE BOT MAKES A TRADE IN
+    # BACKTEST MODE.
+
+    # WHEN THE LIVE BOT MAKES A TRADE, RUN A BACKTEST UP TO THE
+    # MOST RECENT DATA, IN THE SAME TICK SIZE AS YOU ARE TRADING
+    # TO CONFIRM THE CHANGE OF POSITION.
+    
+    # I RECOMMEND 1H TICK SIZE AND BTCUSD WHEN LIVE.
+    
+    '''
+    I also strongly recommend you fork this algo... 
+    
+    get to know the code!
+    tune it!
+    refine the logic!
+    backtest! backtest! backtest!
+    
+    
+    
+    
+    green dragon, capitulation, red dragon, cat bounce is a framework
+    not a refined finished product
+    if you run this algo live as-is for long enough 
+    I do suspect you'll make good money
+    I also suspect you'll have to endure some nasty drawdown at times
+    
+    
+    Professional Algo Trading; Quant is highly secretive. 
+    Consider this framework an open door. 
+    
+    Also check out some of my other freeware in the forums:
+    
+    Bollinger Bands Cthulhu
+    Parabolic SAR Exact Aggregation
+    MACD Triple Trader
+    Import Quandle Data
+    '''
+    
+    
+##############################################################################    
+'''    
+##################################################################################
+
+IMPORTANT - 
+
+
+Honey Badger is a "state machine".
+It must be told its initial state to trade correctly.
+Failure to follow this protocol will cause it to trade backwards at first.
+
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+TO TRADE LIVE YOU MUST FOLLOW THIS PROTOCOL:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1) Click the Fork button to make this strategy yours.
+
+   1b) Refine the strategy.
+
+2) F5 to get the latest backtest data.
+
+3) Run 1h backtest of the past 9 months up to the most recent candle 
+    on the same pair/exchange you intend to run live. 
+
+4) Locate the initialization keys at the end of the backtest log.
+
+5) Install Initialization Keys Below, with "SET_KEYS = True":
+
+'''
+SET_KEYS = True
+KEY1 = 0
+KEY2 = 0
+KEY3 = 0
+'''
+
+5) Below the initialization keys on the log report it will log what currency 
+    the bot is holding at the end of the test.  Position yourself manually at
+    your exchange to match.
+
+6) Click "Trade Live", if your keys were installed correctly it should log:
+
+    'New KEYS Installed Successfully: %s %s %s'
+    'DAY 0'
+
+7) Stop your LIVE trader.
+
+8) Edit the script again "SET_KEYS = False", click SAVE
+
+9) Click "Trade Live", if your keys were installed correctly it should log:
+
+    'Soft Restart Using Stored KEYS: %s %s %s'
+    'DAY 0'
+    
+10) Check your bot every 24 hours.  
+
+11) Check back here regularly for version updates.
+
+##################################################################################
+'''
+
+
+#####################################################################
+#####################################################################
+''' SMA MESH PERIOD SCALING COEFFICIENTS '''
+
+Z           = 1.000     # Scales Full Mesh; Default = 1.000
+
+_2          = 2.000     # Accepts float inputs for sma periods
+_30         = 30.000
+_55         = 55.000
+_60         = 60.000
+_90         = 90.000
+_150        = 150.000 
+# Z allows you to speed up or slow down all sma periods simulateously
+# as an expanding/contracting mesh; it also scales hold periods
+
+#####################################################################    
+#####################################################################
+''' ICEBERG CONTROLS '''    
+#####################################################################
+#only backtest two orders at a time else it logs too much
+ICEBERG_TEST        = False  #ON/OFF to test
+ICEBERG_SIMPLE      = False #True for simple version
+ 
+ICEBERG_MIN         = 1.5   # (1.5) min order size
+ICEBERG_MAX         = 2.5   # (2.5) max order size
+ICEBERG_QTY         = 2.5   # (2.5) max coexisting orders
+ICEBERG_WAIT        = 60    # (60) sec delay between orders
+ICEBERG_ATTEMPTS    = 180   # (180) cycle loop x times before fail
+ICEBERG_ALERT       = 100   # (100) send email after x attempts
+#####################################################################
+#####################################################################
+
+import talib
+import time as t
+import random as r
+
+PAIR = info.primary_pair
+
+LIVE = False
+try: end = info.end
+except: LIVE = True
+BACKTEST = not LIVE
+
+def initialize():
+    
+    if 1: # save the noobs
+      if LIVE:    
+        if info.interval != 3600:
+            log('I recommend 1h tick size when live. ' +
+                'Beware of (fees+margin)^info.tick flash trading risk. ' +
+                'Do as you will.')
+            raise Stop()
+        if info.primary_pair in [pairs.ltc_usd, pairs.ltc_cny, pairs.ltc_eur, pairs.ltc_btc]:
+            log('Honey Badger as tuned can get REKT in a LTC bear market. ' +
+                'Do as you will.')
+            raise Stop()
+            
+    if SET_KEYS:
+        storage.reset()
+        log('storage.reset()')
+
+    storage.ratio = n = (43200 / info.interval)
+    
+    storage.hold = storage.get('hold', KEY1)
+    storage.mode = storage.get('mode', KEY2)
+    storage.overbought = storage.get('overbought', KEY3)    
+
+    storage.prev_mode = storage.get('prev_mode', 0)
+    storage.trades = storage.get('trades', 0)
+    storage.action = storage.get('action', 0)
+    storage.signal = storage.get('signal', 0)
+    storage.currency = storage.get('currency', 0)
+    storage.assets = storage.get('assets', 0)
+    storage.start_currency = storage.get('start_currency', 0)
+    storage.start_assets = storage.get('start_assets', 0)
+
+    if storage.hold+storage.mode+storage.prev_mode > 0: 
+        if SET_KEYS == True:
+            log('New KEYS Installed Successfully: %s %s %s' % (KEY1, KEY2, KEY3))
+        if SET_KEYS == False:
+            log('Soft Restart Using Stored KEYS: %s %s %s' % (KEY1, KEY2, KEY3))
+    else:
+        if LIVE:
+            # save the noobs
+            log('Do not trade live without installing INITIALIZATION KEYS')
+            raise Stop()
+        if BACKTEST:
+            log('No Initialization keys found, the first 3 trades may be innacurate.')
+
+def instruments():
+
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    if pair == pairs.btc_cny:
+        pair = 'btccny'
+    if pair == pairs.ltc_cny:
+        pair = 'ltccny'
+    storage.currency_code = ''.join(list((pair)[3:6]))
+    storage.asset_code = ''.join(list((pair)[0:3]))
+    storage.currency_CODE = (storage.currency_code).upper()
+    storage.asset_CODE = (storage.asset_code).upper()
+    return 
+
+def ma12h(period, depth):
+    
+    minutes = period*720*Z
+    
+    import math
+ 
+    if minutes < 2:
+        log('minimum period 2 minutes returns 1m data[PAIR].sma(2)')
+        minutes = 2
+        #raise Stop()
+    if minutes > 180000:
+        log('maximum period 12h 250 = 180,000 minutes')
+        minutes = 180000
+        #raise Stop()
+    if minutes < 2.0*info.interval/60:
+        log('select smaller tick size for this FMSMA interval')
+        minutes = 2.0*info.interval/60
+        #raise Stop()
+        
+        
+    if 2 <= minutes < 10:
+        data_interval = 60
+        period = minutes
+        depth = depth * 720
+    if 10 <= minutes < 20:
+        data_interval = 300
+        period = minutes / 5   
+        depth = depth * 144
+    if 20 <= minutes < 30:   
+        data_interval = 600
+        period = minutes / 10
+        depth = depth * 72
+    if 30 <= minutes < 60:
+        data_interval = 900
+        period = minutes / 15
+        depth = 48*depth
+    if 60 <= minutes < 120:
+        data_interval = 1800
+        period = minutes / 30
+        depth = 24*depth
+    if 120 <= minutes < 240:  
+        data_interval = 3600
+        period = minutes / 60
+        depth = 12*depth
+    if 240 <= minutes < 480:
+        data_interval = 7200
+        period = minutes / 120
+        depth = 6*depth
+    if 480 <= minutes < 1440:
+        data_interval = 14400
+        period = minutes / 240
+        depth = 3*depth
+    if minutes >= 1440:
+        data_interval = 43200
+        period = minutes / 720
+        
+    period_floor = int(math.floor(period))
+    period_ceiling = int(math.ceil(period))
+
+    if period_floor == period_ceiling:
+        return float(data(interval=data_interval
+            )[PAIR][depth].ma(period_floor))
+        
+    else:
+
+        sma_floor = float(data(
+            interval=data_interval)[PAIR][depth].ma(period_floor))
+        sma_ceiling = float(data(
+            interval=data_interval)[PAIR][depth].ma(period_ceiling))
+        ratio = float(period - period_floor)
+        inverse = 1-ratio
+        return (ratio*sma_ceiling + inverse*sma_floor)
+
+def chart():
+
+    mode = storage.mode
+    if storage.mode < 2:
+        mode = 1
+
+    plot('ma2', storage.ma2)
+    plot('ma30', storage.ma30)
+    plot('floor', storage.floor)
+    plot('moon', storage.moon)
+    plot('ma60', storage.ma60)
+    plot('ma90', storage.ma90)
+    plot('ma150', storage.ma150)
+    plot('resistance', storage.resistance)
+    
+    plot('mode', mode, secondary=True)
+    # 1 = green dragon
+    # 2 = capitulation
+    # 3 = red dragon
+    # 4 = cat bounce
+
+    buy = 0
+    sell = 0
+    if storage.signal == 1:
+        buy = 0.5
+    if storage.signal == -1:
+        sell = -0.5
+    plot('buy_signal', buy, secondary=True)
+    plot('sell_signal', sell, secondary=True)
+
+    if info.tick == 0:
+        plot('offset', -15, secondary=True)
+
+def indicators():
+
+    storage.ma2 = (ma12h(_2, 0))
+    storage.ma30 = (ma12h(_30, 0))
+    storage.ma55 = (ma12h(_55, 0))
+    storage.ma60 = (ma12h(_60, 0))
+    storage.ma90 = (ma12h(_90, 0))
+    storage.ma150 = (ma12h(_150, 0))
+    
+    storage.ma2i = (ma12h(_2, -1))
+    storage.ma30i = (ma12h(_30, -1))
+    storage.ma55i = (ma12h(_55, -1))
+    storage.ma60i = (ma12h(_60, -1))
+    storage.ma90i = (ma12h(_90, -1))
+    storage.ma150i = (ma12h(_150, -1))
+
+    storage.floor = (1-(0.25*Z)) * storage.ma55
+    storage.moon = (1+(0.05*Z)) * storage.ma55
+    storage.resistance = (storage.ma30 + 2.8 *
+        (storage.ma30 - storage.ma60))
+        
+def holdings():
+    
+    storage.currency = float(portfolio[currencies[storage.currency_code]])
+    storage.assets = float(portfolio[currencies[storage.asset_code]])    
+
+    if info.tick == 0:
+        storage.start_currency = (0.00001 +
+            storage.currency + storage.assets * storage.ma2)
+        storage.start_assets = (0.00001 +
+            storage.assets + storage.currency / storage.ma2)
+        if storage.currency + storage.assets == 0:
+            log('Zero Starting Portfolio')
+            raise Stop()
+
+    storage.holding_assets = False
+    storage.holding_currency = False
+    if storage.currency > (storage.ma2 * 0.02):
+        storage.holding_currency = True
+    if storage.assets > 0.12:
+        storage.holding_assets = True
+
+def mode_select():
+
+    if storage.hold <= 0:
+
+        ma2 = storage.ma2
+        ma30 = storage.ma30
+        ma60 = storage.ma60
+        ma90 = storage.ma90
+        ma150 = storage.ma150
+        ma30i = storage.ma30i
+        ma60i = storage.ma60i
+        ma90i = storage.ma90i
+        ma150i = storage.ma150i
+        resistance = storage.resistance
+
+        # Green Dragon Market
+        if ((ma30 > ma60) and
+            (ma60 > ma90) and
+            (ma90 > ma150) and
+            (ma2 > ma30) and
+            (ma30 > 1.002 * ma30i) and
+            (ma60 > 1.002 * ma60i) and
+                (ma90 > 1.002 * ma90i)):
+            storage.mode = 1
+            if ma2 > resistance:
+                storage.overbought = 4*43200
+            if storage.overbought > 0:
+                storage.overbought -= info.interval
+                storage.mode = -1
+
+        # Red Dragon Market
+        elif ((resistance < ma150) and
+             (ma2 < ma90) and
+             (ma2 < ma150) and
+             (ma150 < ma150i) and
+                (resistance < ma90)):
+            storage.mode = 3
+
+        # Not Dragon Market
+        else:
+            if storage.prev_mode == (3 or 4):
+                storage.mode = 4  # Cat Bounce
+            if abs(storage.prev_mode) == (1 or 2):
+                storage.mode = 2  # Capitulation
+
+def mode_3():
+
+    ma2 = storage.ma2
+    ma2i = storage.ma2i
+    ma30 = storage.ma30
+    signal = 0
+    if ma2 < storage.floor:
+        signal = 1
+    elif ma2 > storage.moon:
+        signal = -1
+    elif ((ma2 < ma2i) and
+            (ma2 < ma30) and
+            (ma2i > ma30)):
+                signal = -1
+    return signal
+
+def think():
+
+    action = 0
+    signal = 0
+    mode_select()
+    n = storage.ratio
+    ma2 = storage.ma2
+    hold = storage.hold
+    mode = storage.mode
+    ma30 = storage.ma30
+    ma60 = storage.ma60
+    ma90 = storage.ma90
+    ma90i = storage.ma90i
+    ma150 = storage.ma150
+    prev_mode = storage.prev_mode
+    holding_assets = storage.holding_assets
+    holding_currency = storage.holding_currency
+
+    if hold <= 0:
+
+        # MODE <2 - GREEN DRAGON
+        if mode == 0:
+            signal = 1
+            hold = 1
+            if holding_currency:
+                log('CRYPTO LONG')
+                action = 1
+                hold = 1
+        if mode == 1:
+            signal = 1
+            hold = 1
+            if holding_currency:
+                log('GREEN DRAGON')
+                action = 1
+                hold = 1
+        if mode == -1:
+            signal = -1
+            hold = 0
+            if holding_assets:
+                log('OVERBOUGHT')
+                action = -1
+                hold = 1
+
+        # MODE 2 - CAPITULATION
+        if ((mode == 2) and (prev_mode != 2)):
+            signal = -1
+            if holding_assets:
+                log('CAPITULATION')
+                action = -1
+                hold = 1
+        if mode == prev_mode == 2:
+            if ma2 < ma90:
+                signal = 1
+                if holding_currency:
+                    log('DESPAIR')
+                    action = 1
+                    hold = 1
+            if ((ma2 > (1.1 * ma90)) and
+                    (ma2 > ma60)):
+                signal = -1
+                if holding_assets:
+                    log('FINAL RUN OF THE BULLS')
+                    action = -1
+                    hold = 2
+
+        # MODE 3 - RED DRAGON
+        if ((mode == 3) and (prev_mode != 3)):
+            signal = -1
+            hold = 0
+            if holding_assets:
+                log('RED DRAGON')
+                action = -1
+                hold = 5
+        if mode == prev_mode == 3:
+            signal_3 = mode_3()
+            if signal_3 == 1:
+                signal = 1
+                hold = 5
+                if holding_currency:
+                    log('PURGATORY')
+                    action = 1
+                    hold = 5
+            elif signal_3 == -1:
+                signal = -1
+                hold = 0
+                if holding_assets:
+                    log('DEEPER')
+                    action = -1
+                    hold = 1
+
+        # MODE 4 - CAT BOUNCE
+        if ((mode == 4) and (prev_mode != 4)):
+            signal = 1
+            hold = 0
+            if holding_currency:
+                log('HONEY')
+                action = 1
+                hold = 2
+        if mode == prev_mode == 4:
+            if ((ma2 < 1.05 * ma30) and
+                (ma2 > ma60) and
+                    (ma90 > 1.003 * ma90i)):
+                signal = -1
+                hold = 1
+                if holding_assets:
+                    log('KARMA')
+                    action = -1
+                    hold = 1
+            if ((ma2 < ma90) and
+                (ma90 < ma60) and
+                (ma90 < ma30) and
+                    (ma90 > ma90i)):
+                signal = 1
+                hold = 0
+                if holding_currency:
+                    log('GOLD')
+                    action = 1
+                    hold = 1
+                    
+        storage.hold = Z*hold*86400
+
+    storage.hold -= info.interval
+    storage.signal = signal
+    storage.action = action
+    storage.prev_mode = storage.mode
+
+def order():
+
+    if storage.action == 1:
+        if storage.holding_currency:
+            market_ice(buy)
+            storage.trades += 1
+            email(data[PAIR].price, 
+                subject='**ALERT** HONEY BADGER SAYS: BUY OR CRY')
+
+    if storage.action == -1:
+        if storage.holding_assets:
+            market_ice(sell)
+            storage.trades += 1
+            email(data[PAIR].price, 
+                subject='**ALERT** HONEY BADGER SAYS: FIAT TIME')                
+
+    if abs(storage.action) == 1:
+        report()
+        
+
+ 
+def market_ice_simple(action):
+   
+    # logical theory is the same in configurable version
+    while 1:
+        try:
+            action(PAIR, amount = 2, timeout=60)
+        except TradewaveFundsError:
+            try:
+                portfolio.update()
+                action(PAIR)
+                break
+            except TradewaveInvalidOrderError:
+                break
+            except: pass
+        except: pass
+        if LIVE: t.sleep(60)
+   
+def market_ice_banner():
+    '''
+   market_ice()      
+   
+   litepresence was here Dec 2015 :D hat tip @ traderjoe, lewk
+   
+   GOALS:
+   Effective as-is on any exchange with 250 btc; retail frequency.
+   Randomize Order size
+   Maintain coexisting orders on the books
+   Log Mean Execution Time and Price
+   Log Percent Slippage
+   Simple User interface
+   Don't Fail
+   
+   BETA NOT LIVE TESTED - PLEASE REPORT ERRORS *AND* SUCCESS
+   
+   Contribute to open source iceberg market orders:
+   
+   https://discuss.tradewave.net/t/looping-iceberg-order-strategy-one-order-at-a-time
+   '''
+ 
+def market_ice(action):  
+ 
+    if LIVE or ICEBERG_TEST:  
+       
+        last = float(data[PAIR].price)
+        ice_start_time = int(t.time())
+ 
+        # once at beginning of session announce start time and price
+        log('%s @ %.2f Deploying Iceberg Market Orders' %
+            (ice_start_time, last))
+       
+        # create lists to calculate weighted execution
+        executions = []
+        subtotals = []
+        amounts = []    
+       
+        attempt = 0 # Make 180 Iceberg Attempts
+        while attempt < ICEBERG_ATTEMPTS:  
+           
+            # send email alert on 100th attempt
+            if attempt == ICEBERG_ALERT:
+                email(last, subject='ALERT Tradewave ICEBERG ATTEMPT 100')
+   
+            # each order size random in range [1.5 to 2.5 BTC]
+            random_size = r.random()*(ICEBERG_MAX-ICEBERG_MIN) + ICEBERG_MIN
+            order_timeout = int(ICEBERG_QTY*ICEBERG_WAIT)
+            try:                                
+                # place iceberg order; allow up to 3 to overlap
+                order = action(PAIR, amount=random_size,
+                    timeout=order_timeout)
+                # record ice order weighted time, subtotal, amount
+                amount = (order.amount).to_float()
+                price = float(order.price)
+                subtotals.append(amount*price)
+                executions.append(amount*t.time())
+                amounts.append(amount)
+                # if I don't have enough funds, place a final order    
+            except TradewaveFundsError:
+                expire_icebergs = order_timeout - ICEBERG_WAIT + 1
+                if LIVE: t.sleep(expire_icebergs)
+                try:
+                    portfolio.update()  # refresh holdings
+                    order = action(PAIR) # place final order
+                    # record the final order weighted time, subtotal, amount
+                    amount = (order.amount).to_float()
+                    price = float(order.price)
+                    subtotals.append(amount*price)
+                    executions.append(amount*t.time())
+                    amounts.append(amount)
+                    break
+                except TradewaveInvalidOrderError as e:
+                    break # if final order is too small break
+                except: pass # if anything fails try final order again
+                # don't log anything because too much logging = fail
+            except: pass # if anything fails try iceberg again  
+            # don't log anything because too much logging = fail
+            if LIVE: t.sleep(ICEBERG_WAIT) # delay between orders    
+            attempt += 1
+           
+        # calculate and log weighted session time and price
+        coinz_moved = sum(amounts) #quantity
+        coinz_value = sum(subtotals) #value
+        execution_time = int(sum(executions)/coinz_moved) #weighted time
+        mean_price = sum(subtotals)/coinz_moved #weighted price
+        delta = mean_price - last # net slippage
+        slip = 100 * (delta / last) # percent slippage
+        session_time = int((t.time() - ice_start_time)/60)
+        ma  = float(data[PAIR].ma(30))
+        atr = float(data[PAIR].atr(30))
+        std = float(data[PAIR].std(30))
+        par = (100*((std+atr)/2)/ma)/2
+       
+        # once at end of session, on one line, log results
+        log('market_ice() moved %.2f assets ' %
+                coinz_moved +
+            'valued @ %.2f in %s minutes :: ' %
+                (coinz_value, session_time) +
+            'weighted execution: %.2f @ %s ' %
+                (mean_price, execution_time) +
+            'delta: %.2f slippage: %.3f par: %.3f' %
+                (delta, slip, par))
+               
+    else:
+        # during backtesting place market orders lump sum
+        try:
+            action(PAIR)
+        except:
+            log('Order Failed')  
+            pass    
+    
+def report():
+
+    days = (info.current_time - info.begin) / 86400
+    trades = storage.get('trades', 0)
+    if trades == 0:
+        frequency = 0
+    else:
+        frequency = Decimal(days) / Decimal(trades)
+    start_date = t.strftime(
+        '%Y-%m-%d %H:%M:%S', t.localtime(info.begin))
+    potential_assets = storage.assets + storage.currency / storage.ma2
+    potential_currency = storage.currency + storage.assets * storage.ma2
+    start_assets = storage.start_assets
+    start_currency = storage.start_currency
+    ROI_currency = (100 * potential_currency / start_currency) - 100
+    ROI_assets = (100 * potential_assets / start_assets) - 100
+
+    log('Start Date: %s' % start_date)
+    log('Day: %s Trades: %s Frequency %.1f' % (days, trades, frequency))
+    log('%s %.1f / %.1f / %.1f ROI' %
+        (storage.currency_CODE, start_currency,
+         potential_currency, ROI_currency))
+    log('%s %.1f / %.1f / %.1f ROI' %
+        (storage.asset_CODE, start_assets, potential_assets, ROI_assets))
+    log('***************************************')
+
+def tick():
+    
+    
+    instruments()
+    indicators()
+    holdings()
+    chart()
+        
+    if info.tick > 4: # resolves known bug see https://discuss.tradewave.net/t/automatic-smoothing-for-aggregated-indicators/263/33?u=litepresence
+        
+        think()
+        order()
+    
+        n = storage.ratio
+        z = info.tick % (2 * n)
+        days = info.tick / (2 * n)
+        if z == 0:
+            log('DAY: %s' % days)
+                
+        if storage.hold < 0:
+            storage.hold = 0
+
+def stop():
+
+    bnh_gain = ((storage.start_assets * storage.ma2) /
+        storage.start_currency)
+    currency_gain = ((storage.currency + storage.assets * storage.ma2) /
+        storage.start_currency)
+    asset_gain = currency_gain / bnh_gain
+    if storage.assets*storage.ma2 > storage.currency:
+        holding = storage.asset_CODE
+    else:
+        holding = storage.currency_CODE
+
+    log('***************************************')
+    log('***************************************')
+    log('Honey Badger v1.0 80X by litepresence')
+    log('')
+    log('BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME')
+    report()
+    log('Buy and Hold Gain.: %.2fX' % bnh_gain)
+    log('Asset Gain........: %.2fX' % asset_gain)
+    log('Currency Gain.....: %.2fX' % currency_gain)
+    log('**** INITIALIZATION LIVE WITH THESE KEYS ****')
+    log('KEY1 = %s' % int(storage.hold))
+    log('KEY2 = %s' % storage.mode)
+    log('KEY3 = %s' % storage.overbought)
+    log('**** INITIALIZE LIVE HOLDING: %s ********' % holding)
