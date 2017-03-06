@@ -1,0 +1,1890 @@
+# Aroon Breakout with Mathew Drop Bot by Sungkhum Opensource 0.1
+#
+# Added Ichi Cloud for major price increase sell (like January 2014)
+# Based on: http://www.oxfordstrat.com/trading-strategies/aroon-indicator-breakout-2/
+# TRADE LIVE USING: 1 min tick BTC/USD on BTC-e or Bitfinex
+# Using Litepresence's Aroon Indicator MFI and VWAP and BREAKOUT
+# Litepresence LTC: LL92nc7U8dYeVfdG5cmQwPsSDEYPLphY7B
+# Sungkhum BTC: 1Pu3a4kNEPYiszh8xFv3x7JqWrpbDs28XK
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#
+# Please note this will not always make money - use at your own risk
+# You can change what plots using the variables below (i.e. PLOT_ICHI)
+# NOTE THE 5 - min Drop Bot is DISABLED by default so you can better backtest
+# Enable it using these instructions:
+# Also in order to backtest, turn off the 5 min bot (which is for buying crazy price drops,
+# which doesn't happen often). To turn it off, go to line 442
+# uncomment this:     #if 1 == 3:
+# and comment this out:   if info.tick % (5 / (info.interval / 60)) == 0:
+# Then you can backtest with a 15min tick - but be sure to re-enable it if you run live
+# DEFAULT HAS THE DROP BOT DISABLED SO YOU CAN BACKTEST ON A 15 MIN TICK
+# ENABLED IT BEFORE YOU USE THIS LIVE AND TRADE ON A 1 MIN TICK
+
+import time
+import random 
+import talib
+import math
+from decimal import ROUND_DOWN
+import numpy as np
+
+PLOT_OBV = False
+PLOT_D_1M = False
+PLOT_BREAK = False
+PLOT_ICHI = True
+PLOT_A = True
+PLOT_MFI = True
+PLOT_M = True
+PLOT_C = True
+PLOT_TALIB_SAR = True
+
+BREAK_SHORT = 2
+BREAK_LONG = 10
+BREAK_LIMIT = 80#150
+
+MATHEWS_BUY = 0.025
+MATHEWS_PAIR = data(interval=intervals._15m).btc_usd
+
+
+def smooth(label, indicator, aggregation):
+
+    "litepresence smooth"
+    A = int(math.ceil(aggregation/3600))
+    ZZZ = 'ZZZ_%s' % label
+    ZZZZ = 'ZZZZ_%s' % label
+    if info.tick == 0:
+        storage[ZZZ] = []
+        storage[ZZZZ] = []
+    storage[ZZZ].append(indicator[-1])
+    storage[ZZZ] = storage[ZZZ][-A:]
+    ZZZZZ = sum(storage[ZZZ]) / len(storage[ZZZ])
+    storage[ZZZZ].append(ZZZZZ)
+    storage[ZZZZ] = storage[ZZZZ][-250:]
+    return storage[ZZZZ]
+
+def mathews_ema():
+    period_short = 2
+    period_long = 3
+    the_ema_period = 8
+    storage.MATHEWS_EMA_D = storage.get("MATHEWS_EMA_D", 0)
+    storage.diff_high = storage.get("diff_hig", 0)
+    storage.prev_d = storage.get("prev_d", 0)
+    pair = MATHEWS_PAIR
+
+
+    if storage.MATHEWS_EMA_D == 0:
+        
+        what_the_price = pair.period(250, 'close')
+        C = 200
+        storage.MATHEWS_EMA_D = [(talib.MA(what_the_price, timeperiod=period_short, matype=1)[-(x + 1)] / talib.MA(what_the_price, timeperiod=period_long, matype=1)[-(x + 1)]) - 1 for x in range(200,0,-1)][-C:]
+
+    diff_high = np.array(storage.diff_high)
+    the_dema_array = np.array(storage.MATHEWS_EMA_D)
+    ema_warmup = data(interval=intervals._15m).btc_usd.warmup_period('close')
+    ema_short1 = talib.MA(ema_warmup, timeperiod=period_short, matype=1)[-1]
+    ema_long1 = talib.MA(ema_warmup, timeperiod=period_long, matype=1)[-1]
+
+
+    d = (ema_short1 / ema_long1) - 1
+
+
+    the_dema_array = np.hstack((the_dema_array,d))
+
+    ema = talib.MA(the_dema_array, timeperiod=the_ema_period, matype=1)[-1]
+    d = d - ema
+    storage.prev_d = d
+
+    diff_high = np.hstack((diff_high,d))
+
+    #Change storage.the_dema_array to List so we can store it and limit it to 1000
+    the_dema_array = the_dema_array.tolist()
+    storage.MATHEWS_EMA_D = the_dema_array[-1001:]
+    storage.diff_high = diff_high.tolist()
+    storage.diff_high = storage.diff_high[-1001:] 
+
+    return d, diff_high, ema
+
+PAIR_1                        = pairs.btc_usd
+SAR_NAME                    = 'XXX' # Must be alpha-numeric in quotes
+SAR_PLOT                    = True  # False turns off SAR plot
+SAR_AGGREGATION             = 3600  # Match to tick = no auto adjust  
+SAR_SENSITIVITY             = 1     # whole, default 2
+SAR_RISE_LOOKBACK           = 0     # 0 = MAX, else whole # period
+SAR_RISE_INITIAL            = 0.022  # Inital Rising Acceleration
+SAR_RISE_ACCELERATION       = 0.005  # Rising Acceleration
+SAR_RISE_MAX                = 2   # Maximum Rising Acceleration
+SAR_FALL_LOOKBACK           = 0     # 0 = MAX, else whole # period
+SAR_FALL_INITIAL            = 0.022  # Initial Falling Acceleration
+SAR_FALL_ACCELERATION       = 0.005  # Falling Acceleration
+SAR_FALL_MAX                = 2   # Maximum Falling Acceleration
+
+def parabolic_sar(pair, sar_plot, aggregation, sensitivity,
+rise_lookback, rise_initial, rise_acceleration, rise_max,
+fall_lookback, fall_initial, fall_acceleration, fall_max):
+    
+    
+    
+    ''' Seed psuedo random 24 character hash string '''
+    fall_hash = 2**(1/2.0)*fall_max + 3**(1/2.0)*fall_acceleration + 5**(1/2.0)*(fall_initial+1)
+    rise_hash = 2**(1/3.0)*rise_max + 3**(1/3.0)*rise_acceleration + 5**(1/3.0)*(rise_initial+1)
+    lookback_hash = 2**(1/2.0)*fall_lookback + 3**(1/2.0)*rise_lookback + 5**(1/2.0)*sensitivity
+    pair_agg_hash = int(10**25*pair**(1/2.0) / aggregation**(1/2.0))
+    sar_hash = str(int(10**25*Decimal((fall_hash+lookback_hash)/rise_hash))+pair_agg_hash)[-24:] 
+
+    ''' Initialize Stored Variables '''    
+    extreme_point           = 'parabolic_sar_extreme_point_'+sar_hash
+    acceleration            = 'parabolic_sar_acceleration_'+sar_hash
+    direction               = 'parabolic_sar_direction_'+sar_hash
+    previous                = 'parabolic_sar_previous_'+sar_hash
+    storage[extreme_point]  = storage.get(extreme_point, 0)
+    storage[acceleration]   = storage.get(acceleration, 0)
+    storage[direction]      = storage.get(direction, 0)     
+    storage[previous]       = storage.get(previous, 0)  
+    
+
+    ''' Auto Adjust Thresholds Based on Aggregation '''
+    power                   = 1.235  # Bigger reduces SAR crosses
+    aggregation_ratio       = aggregation/float(3600)
+    power_ratio             = aggregation_ratio**power
+
+    sensitivity             = int(math.ceil(sensitivity))
+    rise_lookback           = int(rise_lookback*aggregation_ratio)
+    rise_initial            = rise_initial/power_ratio
+    rise_acceleration       = rise_acceleration/power_ratio
+    rise_max                = rise_max*aggregation_ratio
+    fall_lookback           = int(fall_lookback*aggregation_ratio)
+    fall_initial            = fall_initial/power_ratio
+    fall_acceleration       = fall_acceleration/power_ratio
+    fall_max                = fall_max*aggregation_ratio
+    
+    ''' Prevent Rattle on 1m ticks '''
+    offset                  = 0
+    if info.interval == 60:
+        fall_initial        = 0
+        rise_initial        = 0
+        offset              = 0.002
+        
+    ''' Log Adjusted Thresholds and persistent variable names on 1st tick '''
+    if 1:
+        if info.tick == 0:
+            log('storage.' + extreme_point)
+            log('storage.' + acceleration)
+            log('storage.' + direction)
+            log('storage.' + previous)        
+            log('tick size....: %s' % info.interval)
+            log('aggregation..: %s' % aggregation)        
+            log('agg_ratio....: %s' % aggregation_ratio)
+            log('power........: %s' % power)
+            log('power_ratio..: %.2f' % power_ratio)
+            log('sensitivity..: %s' % sensitivity)
+            log('rise_lookback: %s' % rise_lookback)
+            log('rise_initial.: %s' % rise_initial)
+            log('rise_accel...: %s' % rise_acceleration)
+            log('rise_max.....: %s' % rise_max)
+            log('fall_lookback: %s' % fall_lookback)
+            log('fall_initial.: %s' % fall_initial)
+            log('fall_accel...: %s' % fall_acceleration)
+            log('fall_max.....: %s' % fall_max)
+            log('offset.......: %s' % offset)
+            log('Version 1.0.3.5')
+    
+    '''  High, Low, and Close '''    
+    high    = data(interval=aggregation)[pair].period(2, 'high') 
+    low     = data(interval=aggregation)[pair].period(2, 'low')     
+    close   = data(interval=aggregation)[pair].period(2, 'close') 
+
+    ''' Build array of candles to look for SAR cross '''
+    low_array   = []
+    high_array  = []
+    for z in range(sensitivity, 0, -1):
+        low_array.append(low[-z])
+        high_array.append(high[-z])
+
+    ''' Determine if inital SAR is Rising or Falling '''        
+    if info.tick == 0:        
+        if close[-1] > close[-2]:
+            storage[direction]       = 1
+            storage[previous]        = low[-2]
+            storage[extreme_point]   = max(high_array)
+            storage[acceleration]    = rise_initial
+        else:            
+            storage[direction]       = -1
+            storage[previous]        = high[-2]
+            storage[extreme_point]   = min(low_array)
+            storage[acceleration]    = -fall_initial   
+
+    ''' Calculate Rising SAR '''
+    # Define New SAR            
+    if storage[direction] == 1:            
+        sar = storage[previous] + storage[acceleration]*(
+            storage[extreme_point] - storage[previous]) 
+        # Update acceleration factor if EP is breached        
+        if high[-1] > storage[extreme_point]:
+            storage[extreme_point] = high[-1]
+            storage[acceleration] = storage[acceleration] + rise_acceleration
+            if storage[acceleration] > rise_max:
+                storage[acceleration] = rise_max   
+        # Define lookback price based on period        
+        if fall_lookback == 0: 
+            lookback = storage[extreme_point]
+        else:
+            lookback = []    
+            for z in range(fall_lookback):
+                lookback.append(high[-(z+1)])
+            lookback = max(lookback)
+            lookback = min(lookback, storage[extreme_point])
+        # If new SAR cross, then Stop and Reverse
+        if min(low_array) < sar:
+            storage[direction] = -2
+            storage[acceleration] = -fall_initial
+            sar = lookback * float(1 + offset)   
+            log('***** SAR CROSS *****')        
+
+    ''' Calculate Falling SAR '''
+    # Define New SAR       
+    if storage[direction] == -1:        
+        sar = storage[previous] + storage[acceleration]*(
+            storage[previous] - storage[extreme_point])   
+        # note storage.AF is negative in this instance  
+        # Update acceleration factor if EP is breached  
+        if low[-1] < storage[extreme_point]:
+            storage[extreme_point] = low[-1]
+            storage[acceleration] = storage[acceleration] - fall_acceleration 
+            if storage[acceleration] < -fall_max:
+                storage[acceleration] = -fall_max
+        # Define lookback price based on period     
+        if rise_lookback  == 0: 
+            lookback = storage[extreme_point]
+        else:
+            lookback = []    
+            for z in range(rise_lookback):
+                lookback.append(L[-(z+1)])
+            lookback = min(lookback)
+            lookback = max(lookback, storage[extreme_point])  
+        # If new SAR cross, then Stop and Reverse
+        if max(high_array) > sar:
+            storage[direction] = 1
+            storage[acceleration] = rise_initial 
+            sar = lookback * float(1 - offset)
+            log('***** SAR CROSS *****')  
+            storage.sar_switch_uptrend = True
+            
+    ''' Update Direction and Prior SAR '''
+    if storage[direction] == -2:
+        storage[direction] = -1
+    storage[previous] = sar  
+    
+    ''' Plot Parabolic SAR '''
+    if sar_plot:
+        #plot('low', low[-1])
+        #plot('high', high[-1]) 
+        plot('Parabolic_SAR', sar)
+    
+
+    
+    return sar    
+
+def round_decimal(x, places, round_down=False):
+    e = Decimal(10) ** -places
+    if round_down is True:
+        return x.quantize(e, rounding=ROUND_DOWN)
+    else:
+        return x.quantize(e)
+
+def initialize():
+    
+    storage.candlesperday       = 1440
+    storage.ORDER               = Decimal(1)
+    storage.Q                   = Decimal(3)
+    storage.TICK                = Decimal(-1)
+    storage.CURRENCY_START      = Decimal(0)
+    storage.ASSET_START         = Decimal(0)
+    storage.TRADES              = Decimal(0)
+    storage.REPORTS_DAILY       = Decimal(300)
+    storage.ACTION              = None 
+    storage.CURRENCY            = None
+    storage.ASSETS              = None
+    storage.LAST_ACTION         = None 
+    storage.LL = []         
+    storage.HH = []
+    storage.LP = 0      # Low Position
+    storage.HP = 0      # High Position
+    storage.LPP = 0
+    storage.HPP = 0
+    storage.vwap_buy_period = 6
+    storage.vwap_sell_period = 10
+    storage.short_period = 2
+    storage.mfi = 40
+    storage.enable_chandelier_exit = False
+    storage.chandelier_buy = False
+    storage.volatility_past = 0
+    storage.second_breakout = storage.get('second_breakout', False)
+
+    #OBV Diff Storage
+    storage.obv_counter = storage.get('obv_counter', 0)
+    storage.price_high = storage.get('price_high', 0)
+    storage.obv_trend = storage.get('obv_trend', 0)
+    storage.price_diff = storage.get('price_diff', 0)
+    storage.obv_diff = storage.get('obv_diff', 0)
+    storage.higher_high = storage.get('higher_high', False)
+    storage.obv_diff_sell = storage.get('obv_diff_sell', False)
+    storage.sar_switch_uptrend = storage.get('sar_switch_uptrend', False)
+    storage.obv_past = storage.get('obv_past', 0)
+    storage.sar_past = storage.get('sar_past', 0)
+    storage.obv_wait_sar_cross = storage.get('obv_wait_sar_cross', False)
+
+    #Mathews
+    storage.mathews_buy_ready = storage.get('mathews_buy_ready', False)
+    storage.mathews_small_buy_ready = storage.get('mathews_small_buy_ready', False)
+    storage.mathews_d_prev = storage.get('mathews_d_prev', False)
+    storage.mathews_small_sell_ready = storage.get('mathews_small_sell_ready', False)
+    storage.mathews_breakout_sell_aroon = storage.get('mathews_breakout_sell_aroon', False)
+    storage.mathews_breakout_sell_sar = storage.get('mathews_breakout_sell_sar', False)
+    storage.mat_breakout_buy = storage.get('mat_breakout_buy', False)
+    storage.need_wait_mat_sell = storage.get('need_wait_mat_sell', False)
+    storage.normal_mat_breakout_buy = storage.get('normal_mat_breakout_buy', False)
+    storage.normal_mat_breakout_buy_price = storage.get('normal_mat_breakout_buy_price', False)
+    storage.mathew_crazy_buy = storage.get('mathew_crazy_buy', False)
+    storage.sar_wait_to_sell = storage.get('sar_wait_to_sell', False)
+    
+    storage.re_buy_correction_with_sar = storage.get('re_buy_correction_with_sar', False)
+    
+    storage.sar_just_switched_down = storage.get('sar_just_switched_down', False)
+    storage.v_for_breakout = storage.get('v_for_breakout', 1)
+    storage.get_ready_normal_buy = False
+    storage.breakout_wait_for_ema = storage.get('breakout_wait_for_ema', False)
+    
+    #ICHI
+    storage.senkou_BQ = []
+    storage.senkou_AQ = []
+    storage.alternate   = 0
+    storage.bought_above_senkou_a = storage.get('bought_above_senkou_a', False)
+    storage.ichi_cloud_sell_price = storage.get('ichi_cloud_sell_price', 1)
+    storage.ichi_cloud_SAR_sell = storage.get('ichi_cloud_SAR_sell', False)
+    
+    storage.sar_just_switched_up = storage.get('sar_just_switched_up', False)
+    storage.sar2_just_switched_up = storage.get('sar2_just_switched_up', False)
+    storage.sar2_past = storage.get('sar2_past', False)
+    
+    storage.MFI_buy_next_sar = storage.get('MFI_buy_next_sar', False)
+    storage.get_ready_MFI_sar_buy = storage.get('get_ready_MFI_sar_buy', False)
+    storage.special_low_mfi_buy = storage.get('special_low_mfi_buy', False)
+    storage.MFI_spike_sar_buy = storage.get('MFI_spike_sar_buy', False)
+    
+    storage.market_past = 0
+    
+    #MFI
+    storage.TYP     = 0
+    storage.NMF     = []
+    storage.PMF     = []
+    storage.TALIB   = []
+
+    # define arrays to store period H's and L's for stop loss
+    storage.H_array = []
+    storage.L_array = []
+
+    storage.bought_price = 1
+    storage.limit_order = False
+    storage.BACKTEST = True
+    storage.plot = True
+    storage.short_exit = False
+    storage.C_Buy = False
+    storage.BREAKOUT_count = 0
+    storage.breakout_buy = storage.get('breakout_buy', 0)
+    storage.enable_easy_sell = storage.get('enable_easy_sell', 0)
+    storage.quick_exit_sell = storage.get('quick_exit_sell', 0)
+    storage.normal_buy = storage.get('normal_buy', 0)
+    storage.easy_sell_wait = storage.get('easy_sell_wait', 0)
+    storage.breakout_sell_sar = storage.get('breakout_sell_sar', 0)
+    
+    #Bot Stats
+    storage.buyhold = storage.get('buyhold', 0)
+    storage.price = storage.get('price', 0)
+    storage.firstprice = storage.get('firstprice', 0)
+    storage.startportfolio = storage.get('startportfolio', 0)
+    storage.buyholdpercent = storage.get('buyholdpercent', 0)
+    storage.tick_for_stats = 0
+    storage.restart = 0
+    
+    storage.bot_stats = True
+
+        
+def tick():
+    
+#BACKTEST STUFF
+
+    #if info.tick == 0:    
+
+        #MATHEWS CRAZY BUY
+    #    storage.C_Buy = True
+    #    storage.breakout_buy = True
+    #    storage.sar_wait_to_sell = True
+    #    storage.mathew_crazy_buy = True
+    
+        # Normal Buy
+    #    storage.bought_above_senkou_a = True
+    #    storage.bought_price = 591
+    #    storage.normal_buy = True
+    
+        #BREAKOUTBUY
+        #storage.C_Buy = True
+        #storage.breakout_buy = True
+        
+        #OBV Buy
+    #    storage.obv_5_buy = True
+    #    storage.sar_wait_to_sell = True
+    
+        #LOW MFI buy when SAR uptrend
+    #    storage.bought_price = 595
+    #    storage.C_Buy = True
+    #    storage.bought_above_senkou_a = False
+    #    storage.special_low_mfi_buy = True
+
+    can_buy = False
+    can_sell = False
+
+    current_price_1min = data(interval=intervals._1m).btc_usd.close
+    prev_price_1min = data(interval=intervals._1m).btc_usd[-1].close
+
+    # Mathews BREAKOUT Bot on MATHEWS_INTERVAL_REAL (5min) ENABLE THIS FOR LIVE TRADING!!
+    if 1 == 3:
+    #if info.tick % (5 / (info.interval / 60)) == 0:
+        d, dHigh, another_ema = mathews_ema()
+        if PLOT_D_1M:
+            plot('D', d, secondary=True)
+        #log(d)
+
+
+        #Mathew Diff Indicator passed buy value, wait for it to trend up before buy
+        if d < -MATHEWS_BUY and portfolio.usd > 1:
+            storage.mathews_buy_ready = True
+            log(d)
+            
+        #Mathew Diff Indicator passed buy value, wait for it to trend up before buy
+        #elif d < -0.004 and portfolio.usd > 1:
+        #    storage.mathews_small_buy_ready = True
+            
+            
+        #Mathew Diff Indicator passed buy value, wait for it to trend up before small sell
+        #elif d > 0.0029 and portfolio.btc > 0.01:
+        #    storage.mathews_small_sell_ready = True
+
+
+        #if storage.mathews_small_buy_ready:
+         #   mathew_small_buy_ema = data(interval=intervals._1h).btc_usd.ema(2)
+         #   prev_mathew_small_buy_ema = data(interval=intervals._1h).btc_usd[-1].ema(2)
+            #plot('mat_EMA', mathew_small_buy_ema)
+            
+        #ADDED 1.0.3.5
+        if storage.breakout_buy and not storage.mathew_crazy_buy and storage.v_for_breakout > -175 and d > 0.005 and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Mathew Sell on Weak Breakout')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.enable_easy_sell = False
+            storage.bought_above_senkou_a = False
+            storage.MFI_spike_sar_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_sell_sar = False       
+
+            
+            
+        #If Mathews Diff passed buy value and prev D is less than current (meaning uptrend) then buy
+#        if storage.mathews_small_buy_ready and prev_mathew_small_buy_ema < mathew_small_buy_ema and portfolio.usd > 1:
+#            try:
+#                order = buy(pairs.btc_usd)
+#            except TradewaveFundsError, e:
+#                log('Not enough funds!')
+#            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+#                log('Unable to place buy order: %s' % e.message)
+#            storage.mathews_small_buy_ready = False    
+#            storage.short_exit = False
+#            storage.C_Buy = True
+#            storage.breakout_buy = True
+#            storage.sar_wait_to_sell = True
+#            log('Small Mathews Buy')
+
+
+        #If Mathews Diff passed buy value and prev D is less than current (meaning uptrend) then buy
+#        if storage.mathews_sell_ready and prev_mathew_small_buy_ema > mathew_small_buy_ema and portfolio.btc > 0.01:
+#            try:
+#                order = sell(pairs.btc_usd)
+#            except TradewaveFundsError, e:
+#                log('Not enough funds!')
+#            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+#                log('Unable to place buy order: %s' % e.message)
+#            storage.mathews_sell_ready = False    
+#            storage.mathews_breakout_sell_sar = True
+#            storage.mathews_breakout_sell_aroon = True
+#            log('Mathews small sell')
+        #Store Prev Mathews Diff  
+        storage.mathews_d_prev = d     
+        
+        
+    #1min bot for buying Mathew's breakout
+    
+    if storage.mathews_buy_ready:
+        mat_ema = data(interval=intervals._1m).btc_usd.ema(3)
+        mat_ema2 = data(interval=intervals._1m).btc_usd[-1].ema(3)
+    
+    #plot('mat_EMA', mat_ema)     
+    
+    #If Mathews Diff passed buy value and prev D is less than current (meaning uptrend) then buy
+    if storage.mathews_buy_ready and mat_ema > mat_ema2 and portfolio.usd > 1:
+        try:
+            order = buy(pairs.btc_usd)
+        except TradewaveFundsError, e:
+            log('Not enough funds!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place buy order: %s' % e.message)
+        storage.mathews_buy_ready = False    
+        storage.short_exit = False
+        storage.C_Buy = True
+        storage.ready_mat_n_breakout_buy = False
+        storage.breakout_buy = True
+        storage.sar_wait_to_sell = True
+        storage.get_ready_normal_buy = False
+        storage.obv_diff_sell = False
+        storage.ichi_cloud_SAR_sell = False
+        storage.mathew_crazy_buy = True
+        storage.re_buy_correction_with_sar = False
+        log('Crazy Mathews Buy')
+    #    log('previous price: %f current price: %f' % (prev_price, current_price))
+
+    
+
+    #1h Bot
+    if info.tick % (60 / (info.interval / 60)) == 0:   
+    
+        current_price = data(interval=3600).btc_usd.close
+        current_price_past = data(interval=3600).btc_usd[-1].close
+    
+    
+        ############# BOT STATS ################
+        #Store start portfolio
+        if storage.startportfolio == 0:
+            storage.startportfolio = (portfolio.btc * current_price) + portfolio.usd
+            storage.buyhold = ((portfolio.btc * current_price) + portfolio.usd) / current_price
+            storage.buyhold_btc = (portfolio.usd / current_price) + portfolio.btc
+            storage.firstprice = current_price  
+        ############ END STATS ################### 
+    
+        # Chandelier's Exit
+        #if current_price > storage.bought_price:
+        #    storage.bought_price = current_price
+
+        P       = 22  # PERIOD
+
+        SHORT                   = data(interval=3600).btc_usd.ema(storage.short_period)
+        SHORT_prev                   = data(interval=3600).btc_usd[-1].ema(storage.short_period)
+        
+        
+        SHORT_slope = round(100*(SHORT - SHORT_prev))/100
+        #log('SHORT Slope: %f' % (SHORT_slope))
+        
+        price_ema                   = data(interval=3600).btc_usd.ema(5)
+        price_ema_prev                   = data(interval=3600).btc_usd[-1].ema(5)
+        
+        
+        price_ema_slope = round(100*(price_ema - price_ema_prev))/100
+        #plot('price_ema', price_ema)
+        #log('Price Slope: %f' % (price_ema_slope))
+        
+        vwapbuy                    = data(interval=3600).btc_usd.vwap(storage.vwap_buy_period)
+        vwapsell                    = data(interval=3600).btc_usd.vwap(storage.vwap_sell_period)
+        # warmup HLC
+        PAIR    = data.btc_usd
+        H       = data(interval=3600).btc_usd.warmup_period('high')
+        L       = data(interval=3600).btc_usd.warmup_period('low')   
+        C       = data(interval=3600).btc_usd.warmup_period('close')
+
+
+        # warmup period H and L
+        if info.tick == 0:
+            for z in range(P, 1, -1):
+                storage.H_array.append(H[-z])
+                storage.L_array.append(L[-z])
+
+        # append latest H and L
+        storage.H_array.append(H[-1])
+        storage.L_array.append(L[-1])
+    
+        # limit list to P elements
+        storage.H_array = storage.H_array[-P:]
+        storage.L_array = storage.L_array[-P:]
+
+        # find H and L period max and min
+        Pmax = Decimal(max(storage.H_array))
+        Pmin = Decimal(min(storage.L_array))
+
+        # calculate period Average True Range
+        ATR = Decimal(talib.ATR(H, L, C, timeperiod=P)[-1])
+
+        # Chandelier's Exit
+        C1 = Pmax - Decimal(3)*ATR
+        #C2 = Pmin + Decimal(3)*ATR
+        C2 = storage.bought_price - Decimal(3)*ATR
+        #log(C2)
+        #log(current_price)
+
+        if PLOT_C:
+            plot('C1', C1)
+            
+            plot('vwapbuy', vwapbuy)
+            plot('SHORT', SHORT)
+        #plot('SHORT', SHORT)
+            
+        #plot('SHORT', SHORT)
+        #plot('C_short', C2)
+        #plot('Pmax', Pmax)
+        #plot('Pmin', Pmin)
+    
+
+        #Market Detection CHANGED TO 2h FOR ACCURACY IN 1.0.3.5 also changed to 100 length
+        #ema_market_long_prev = round(100*data(interval=intervals._1h).btc_usd[-2].ema(250))/100
+        #ema_market_long = round(100*data(interval=intervals._1h).btc_usd.ema(250))/100
+        #Market_SLOPE_long = round(100*(ema_market_long - ema_market_long_prev))/100
+        if storage.market_past == 0:
+            storage.market_past = round(100*data(interval=intervals._2h).btc_usd[-2].ema(125))/100
+        
+        C_mark       = data(interval=intervals._2h).btc_usd.warmup_period('close')
+        talib_market = talib.MA(C_mark, timeperiod = 125, matype=1)
+        
+        talib_market_S  = smooth('market_array', talib_market, 7200)
+        Market_SLOPE_long = round(100*(talib_market_S[-1] - storage.market_past))/100
+        #log('Talib Market Slope: %f' % (talib_market_slope))
+        #store market for past
+        storage.market_past = talib_market_S[-1]
+        
+    
+        #Here we set the period for Aroon based on the market trend
+        if Market_SLOPE_long <= -0.1:
+            #Bear Market
+            aroon_period = 100
+        if Market_SLOPE_long <= -2:
+            #Mid Bear Market
+            aroon_period = 95
+        if Market_SLOPE_long <= -5:
+            #Strong Bear Market
+            aroon_period = 90   
+
+        if Market_SLOPE_long >= 0.1:
+            #Bull Market
+            aroon_period = 100
+        if Market_SLOPE_long >= 2:
+            #Mid Bull Market
+            aroon_period = 95
+        
+        if Market_SLOPE_long >= 5:
+            #Strong Bull Market
+            aroon_period = 95
+
+        if Market_SLOPE_long > -0.1 and Market_SLOPE_long < 0.1:
+            #Flat Market
+            aroon_period = 100
+        aroon_period = 95
+        #plot('Period', period, secondary=True)
+        if PLOT_M:
+            plot('talibmarket', talib_market_S[-1])
+        #log('Market Slope: %f' % (Market_SLOPE_long))
+
+        if storage.limit_order:
+            storage.TICK += 1
+    
+    
+    
+            # Calculate and log ROI
+            n = 5
+
+            CURRENCY                    = round_decimal(portfolio.usd, 2, round_down=True)
+            ASSETS                      = round_decimal(portfolio.btc, 2, round_down=True)
+            PRICE                       = round_decimal((data(interval=60).btc_usd.vwap(n)), 4)
+            CURRENCY_LIMIT              = round_decimal((CURRENCY + (ASSETS*PRICE)), 2, round_down=True)
+            ASSET_LIMIT                 = round_decimal((ASSETS + (CURRENCY/PRICE)), 2, round_down=True)    
+            if storage.TICK == 0:
+                storage.CURRENCY_START  = CURRENCY_LIMIT
+                storage.ASSET_START     = ASSET_LIMIT
+            ROI_C                       = round_decimal(((100*CURRENCY_LIMIT/storage.CURRENCY_START) - 100),1)
+            ROI_A                       = round_decimal(((100*ASSET_LIMIT/storage.ASSET_START) - 100), 1)
+            DAY                         = round_decimal((storage.TICK/storage.candlesperday), 5)
+            FREQ                        = round_decimal(DAY/(Decimal(0.0000001) + storage.TRADES), 2)
+            if FREQ > 100000:
+                FREQ                    = None
+            elif FREQ < 0.001:    
+                FREQ                    = None
+            HELD                        = round_decimal(100*ASSETS/ASSET_LIMIT, 1, round_down=False)
+
+            if storage.tick_for_stats == 6 or storage.restart == 0:
+                DAY  = round_decimal((storage.TICK/storage.candlesperday), 2)
+                log('***************************************')
+                log('Trades: %s Day: %s Freq: %s Price: %s' 
+                    % (storage.TRADES, DAY, FREQ, PRICE))
+                log('Currency: %s / %s / %s %s ROI' 
+                    % (storage.CURRENCY_START, CURRENCY, CURRENCY_LIMIT, ROI_C))
+                log('Assets: %s / %s / %s %s ROI %s Held' 
+                    % (storage.ASSET_START, ASSETS, ASSET_LIMIT, ROI_A, HELD)) 
+
+
+        # insert method here ##################
+        
+        #MFI
+        instrument      =   pairs.btc_usd
+
+        # MFI period and aggregated candle size
+        period          = 30        # MFI period
+        IN              = 3600     # aggregated candle size
+
+        I               = 3600 # selected tick interval
+        A               = IN/I          # aggretate / tick interval ratio
+
+        #Close, High, Low, and Volume data at with interval and instrument input
+        C    =   data(interval=IN)[instrument].warmup_period('close')
+        H    =   data(interval=IN)[instrument].warmup_period('high')
+        L    =   data(interval=IN)[instrument].warmup_period('low')
+        V    =   data(interval=IN)[instrument].warmup_period('volume')    
+
+        mfi_talib  =  talib.MFI(H,L,C,V, timeperiod = 30)
+        ema_mfi                         =  talib.MA(mfi_talib, timeperiod = 10, matype=1)
+        if PLOT_M:
+            plot('ema_mfi', ema_mfi[-1], secondary = True)
+        mfi_ema_slope = round(100*(ema_mfi[-1] - ema_mfi[-2]))/100
+        mfi_ema_slope_past = round(100*(ema_mfi[-2] - ema_mfi[-3]))/100
+        mfi_slope = round(100*(mfi_talib[-2] - mfi_talib[-3]))/100
+        
+        #log('MFI EMA Slope: %f MFI Slope %f' % (mfi_ema_slope,mfi_slope))
+        
+        
+
+
+        # warm up MFI
+        if info.tick == 0:
+
+            for z in range(period*A, 1, -1):
+                TYP = (H[-z] + L[-z] + C[-z])/3
+                RMF = TYP * V[-z]
+                if TYP > storage.TYP:
+                    storage.PMF.append(RMF)
+                    storage.NMF.append(0)
+                else:
+                    storage.NMF.append(RMF)
+                    storage.PMF.append(0)
+                storage.TYP = TYP
+
+        # Define typical price and Raw Money Flow        
+        TYP = (H[-1] + L[-1] + C[-1])/3
+        RMF = TYP * V[-1]
+
+        # Sort MFI period Money flow data into two lists 
+        if TYP > storage.TYP:
+            storage.PMF.append(RMF)
+            storage.NMF.append(0)
+        else:
+            storage.NMF.append(RMF)
+            storage.PMF.append(0)
+
+        storage.NMF = storage.NMF[-period*A:]
+        storage.PMF = storage.PMF[-period*A:]
+
+        # Calculate Money Flow Ratio and Money Flow index
+        MFR = sum(storage.PMF)/sum(storage.NMF)
+        MFI = 100-100/(1 + MFR)
+
+        # Limit Range 
+        if MFI > 100:
+            MFI = 100
+        elif MFI < 0:
+            MFI = 0
+
+        # Redefine previos typical price    
+        storage.TYP = TYP
+
+        #plot('API_MFI', API_MFI, secondary=True)
+        #plot('talib_MFI', talib_MFI_now + 1, secondary=True)
+        if PLOT_MFI:
+            plot('litepresence_MFI', MFI - 1, secondary=True)
+        #END MFI
+        #if MFI < 40:
+        #    log('MFI: %f SLOPE: %f' % (MFI,mfi_ema_slope))
+            
+        #AROON
+        IN                      = 3600
+        instrument              = pairs.btc_usd
+
+        # import global tick size, calculate aggregate/tick ratio, import H&L 
+        I               = 3600 # selected tick interval
+        A               = IN/I          # aggretate / tick interval ratio    
+
+        H               = data(interval=IN)[instrument].warmup_period('high')
+        L               = data(interval=IN)[instrument].warmup_period('low')
+
+        for z in range(aroon_period+1):
+            storage.HH.append(round(1000*H[-(z+1)])/1000) 
+        storage.HH = storage.HH[-aroon_period:]  
+        if H[-1] < max(storage.HH):
+            storage.HP = storage.HH.index(max(storage.HH)) + 1
+        else:
+            storage.HP = 0
+        if storage.HP > storage.HPP:
+            storage.HPP = Decimal(storage.HPP) + Decimal(1)/Decimal(A)   
+        if storage.HP < storage.HPP or (info.tick==0):
+            storage.HPP = storage.HP        
+
+        for z in range(aroon_period+1):
+            storage.LL.append(round(1000*L[-(z+1)])/1000) 
+        storage.LL = storage.LL[-aroon_period:]   
+        if L[-1] > min(storage.LL):
+            storage.LP = storage.LL.index(min(storage.LL)) + 1
+        else:
+            storage.LP = 0
+        if storage.LP > storage.LPP:
+            storage.LPP = Decimal(storage.LPP) + Decimal(1)/Decimal(A)   
+        if (storage.LP < storage.LPP) or (info.tick==0):
+            storage.LPP = storage.LP
+
+        A_UP = 100-(storage.HPP*(100/aroon_period))        
+        A_DOWN = 100-(storage.LPP*(100/aroon_period))  
+        A_OSC = A_UP - A_DOWN
+        #END AROON
+
+########## ICHI CLOUD
+
+        tenkan_period       = 9
+        kijun_period        = 26
+        senkou_B_period     = 52
+        senkou_A_span       = 26
+        senkou_B_span       = 26
+        chikou_span         = -26
+
+
+        #Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2)) 
+        #The default setting is 9 periods and can be adjusted. On a daily 
+        #chart, this line is the mid point of the 9 day high-low range, 
+        #which is almost two weeks.     
+        tenkan_high         = max(data(interval=intervals._1h).btc_usd.period(9, 'high')) 
+        tenkan_low          = min(data(interval=intervals._1h).btc_usd.period(9, 'low'))
+        tenkan              = (tenkan_high + tenkan_low)/2   
+
+
+        #Kijun-sen (Base Line): (26-period high + 26-period low)/2)) 
+        #The default setting is 26 periods and can be adjusted. On a daily 
+        #chart, this line is the mid point of the 26 day high-low range, 
+        #which is almost one month).  
+        kijun_high          = max(data(interval=intervals._1h).btc_usd.period(26, 'high'))
+        kijun_low           = min(data(interval=intervals._1h).btc_usd.period(26, 'low'))
+        kijun               = (kijun_high + kijun_low)/2
+
+
+        #Senkou Span A (Leading Span A): (Conversion Line + Base Line)/2)) 
+        #This is the midpoint between the Conversion Line and the Base Line. 
+        #The Leading Span A forms one of the two Cloud boundaries. It is 
+        #referred to as "Leading" because it is plotted 26 periods in the future
+        #and forms the faster Cloud boundary.     
+        senkou_A_last       = (tenkan + kijun)/2
+        storage.senkou_AQ.append(senkou_A_last)
+        storage.senkou_AQ = storage.senkou_AQ[-26:]
+        if len(storage.senkou_AQ) == 26:
+            senkou_A = storage.senkou_AQ.pop(0)
+        else:
+            senkou_A = data(interval=intervals._1h).btc_usd.vwap(30)
+            
+        if PLOT_ICHI:
+            plot('senkou_A', senkou_A)
+
+########### END ICHI CLOUD
+
+
+    #Breakout   
+
+        pair = data.btc_usd
+        shortMa = float(data(interval=3600).btc_usd.ma(BREAK_SHORT))
+        longMa = float(data(interval=3600).btc_usd.ma(BREAK_LONG))
+        longHigh = talib.MA(data(interval=3600).btc_usd.period(BREAK_LONG, 'high'), timeperiod=BREAK_LONG)[-1]
+        longLow = talib.MA(data(interval=3600).btc_usd.period(BREAK_LONG, 'low'), timeperiod=BREAK_LONG)[-1]
+        shortHigh = talib.MA(data(interval=3600).btc_usd.period(BREAK_SHORT, 'high'), timeperiod=BREAK_SHORT)[-1]
+        shortLow = talib.MA(data(interval=3600).btc_usd.period(BREAK_SHORT, 'low'), timeperiod=BREAK_SHORT)[-1]   
+        longRange = 100 * (longHigh - longLow) / shortMa
+        shortRange = 100 * (shortHigh - shortLow) / shortMa
+        diff = longRange - shortRange
+        volatility = round(((diff) * (diff) * (shortMa - longMa)) * 100) / 100
+    
+        #log('Volatility %f Past: %f' % (volatility, storage.volatility_past))
+        #log(current_price)
+
+        #if volatility > BREAK_LIMIT:
+        #    breakout = 1
+        #elif volatility < -BREAK_LIMIT:
+        #    breakout = -1
+        #else:
+        #    breakout = 0   
+    
+        if volatility < -BREAK_LIMIT:
+            storage.BREAKOUT_count = 1
+    
+        if storage.volatility_past < volatility and storage.BREAKOUT_count == 1:
+            do_BREAKOUT_buy = True
+            storage.v_for_breakout = storage.volatility_past
+            if SHORT < longMa:
+                storage.breakout_wait_for_ema = True
+        else: do_BREAKOUT_buy = False
+        
+        if storage.breakout_wait_for_ema and SHORT > longMa:
+            storage.breakout_wait_for_ema = False
+        
+    
+        if volatility > -BREAK_LIMIT:
+            storage.BREAKOUT_count = 0
+        else:
+            storage.BREAKOUT_count = 1
+    
+        #TEST FOR JANUARY 2013
+        if portfolio.btc > 0.01 and volatility > 300:
+            #We just had a major price jump - most likely the price will fall, so sell easier
+            storage.easy_sell_wait = True
+        if storage.easy_sell_wait and current_price > longMa:
+            #log('Current: %f MA: %f' % (current_price, longMa))
+            storage.enable_easy_sell = True
+            storage.easy_sell_wait = False
+    
+        #if storage.breakout_buy and volatility > -BREAK_LIMIT:
+        #    log('BREAKOUT Vola returned')
+
+        #if breakout != 0:
+        #    log('Breakout? %s' % (breakout))
+        if PLOT_BREAK:
+            plot('Breakout', volatility, secondary=True)
+            plot('forquick', longMa)
+    
+
+    
+        #END BREAKOUT
+
+    #SAR
+        z = parabolic_sar(PAIR_1, SAR_PLOT, SAR_AGGREGATION, SAR_SENSITIVITY,
+            SAR_RISE_LOOKBACK, SAR_RISE_INITIAL, SAR_RISE_ACCELERATION, SAR_RISE_MAX,
+            SAR_FALL_LOOKBACK, SAR_FALL_INITIAL, SAR_FALL_ACCELERATION, SAR_FALL_MAX)
+            
+        #z = data(interval=intervals._1h).btc_usd.sar(acceleration=0.005, max_acceleration=2)
+        z2 = data(interval=intervals._1h).btc_usd.sar(acceleration=0.005, max_acceleration=2)
+        
+        if PLOT_TALIB_SAR:
+            plot('talib_sar', z2)
+            
+    
+        #for sar breakout sell, make sure SAR crossed after buy first
+        if storage.breakout_buy and not storage.breakout_sell_sar:
+            if z < current_price:
+                storage.breakout_sell_sar = True
+        #OBV sar detect
+        if z < current_price and storage.sar_past > current_price_past and storage.sar_past != 0:
+            storage.sar_switch_uptrend = True
+            
+        #rebuy correction sar detect
+        if z < current_price and storage.sar_past > current_price_past and storage.sar_past != 0:
+            storage.sar_just_switched_up = True
+            log('SAR JUST CROSSED UPTREND')
+        else:
+            storage.sar_just_switched_up = False
+            
+        #reby correction downtrend SAR detect
+        if z > current_price and storage.sar_past < current_price_past and storage.sar_past != 0:
+            storage.sar_just_switched_down = True
+        else:
+            storage.sar_just_switched_down = False
+
+        #rebuy correction sar2 detect
+        if z2 < current_price and storage.sar2_past > current_price_past and storage.sar2_past != 0:
+            storage.sar2_just_switched_up = True
+        else:
+            storage.sar2_just_switched_up = False
+        
+        if storage.obv_wait_sar_cross and z > current_price:
+            storage.obv_wait_sar_cross = False
+            
+        if storage.sar_wait_to_sell and z < current_price:
+            storage.sar_wait_to_sell = False
+            
+        
+        if PLOT_A:
+            plot('A_UP', A_UP, secondary=True)
+            plot('A_DOWN', A_DOWN, secondary=True)
+            #plot('A_OSC', A_OSC-300, secondary=True)
+    
+        
+        #Reset short exit
+        if A_UP < A_DOWN:
+            storage.short_exit = False
+            storage.quick_exit_sell = False
+    
+    
+        #if portfolio.btc > 0.01:
+        #    log('Current Price: %f Bought Price: %f' % (current_price, storage.bought_price))
+        #    log(((current_price - storage.bought_price) / storage.bought_price) * 100)
+        # 1.0.3.5
+        #Added MFI < 50 1.0.3.5 removed  and SHORT < vwapbuy 
+        if not storage.obv_wait_sar_cross and not storage.sar_wait_to_sell and A_UP > A_DOWN and A_UP >= 90 and storage.short_exit == False and portfolio.usd > 7 and ((Market_SLOPE_long > 0.1 and MFI < 60) or (MFI > 59 and Market_SLOPE_long > 0.15)):  #and MFI < 50
+            storage.get_ready_normal_buy = True
+        # 1.0.3.5 added and mfi_ema_slope > 0
+        if storage.get_ready_normal_buy and SHORT_slope > 0 and mfi_ema_slope > 0 and portfolio.usd > 1:
+            if storage.limit_order:
+                ACTION = 1
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Normal Buy')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.ichi_cloud_SAR_sell = False
+            storage.get_ready_normal_buy = False
+            storage.get_ready_normal_buy = False
+            storage.second_breakout = False
+            storage.re_buy_correction_with_sar = False
+            if senkou_A < current_price:
+                storage.bought_above_senkou_a = True
+            storage.normal_buy = True
+            storage.breakout_sell_sar = False
+            storage.obv_diff_sell = False
+            storage.MFI_buy_next_sar = False
+
+
+        #ADDED for MAY 2014
+        elif storage.ichi_cloud_SAR_sell and z < current_price and (((current_price - storage.ichi_cloud_sell_price)/storage.ichi_cloud_sell_price) * 100) > -1 and portfolio.usd > 1:
+            if storage.limit_order:
+                ACTION = 1
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('ICHI Re-BUY on SAR and no Price Drop')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.ichi_cloud_SAR_sell = False
+            storage.get_ready_normal_buy = False
+            storage.second_breakout = False
+            storage.re_buy_correction_with_sar = True
+            if senkou_A < current_price:
+                storage.bought_above_senkou_a = True
+            storage.normal_buy = True
+            storage.breakout_sell_sar = False
+            storage.obv_diff_sell = False
+            storage.MFI_buy_next_sar = False
+        
+        #ADDED FOR APRIL 2014
+        elif storage.normal_buy and z > current_price and MFI < 50 and storage.sar_just_switched_down and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Normal Buy SAR MFI Correction Sell')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.special_low_mfi_buy = False
+            storage.mathew_crazy_buy = False
+            storage.MFI_spike_sar_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.bought_above_senkou_a = False
+            storage.sar_wait_to_sell = True
+            storage.enable_easy_sell = False
+            storage.breakout_sell_sar = False  
+        
+        #ADDED FOR JANUARY 2014
+        elif not storage.mathew_crazy_buy and storage.bought_above_senkou_a and senkou_A > current_price and (((current_price - storage.bought_price)/storage.bought_price) * 100) > 10 and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Ichi Cloud Sell on high gain')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.MFI_spike_sar_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.normal_buy = False
+            storage.special_low_mfi_buy = False
+            storage.bought_above_senkou_a = False
+            storage.mathew_crazy_buy = False
+            storage.enable_easy_sell = False
+            storage.breakout_sell_sar = False
+
+          
+            
+            #APRIL ADDED and z2 > current_price
+        elif storage.normal_buy and A_UP < 90 and A_DOWN > 30 and z2 > current_price and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Normal Buy Correction Sell')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.special_low_mfi_buy = False
+            storage.MFI_spike_sar_buy = False
+            storage.bought_above_senkou_a = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.enable_easy_sell = False
+            storage.breakout_sell_sar = False
+            if z < current_price:
+                storage.re_buy_correction_with_sar = True
+                storage.obv_wait_sar_cross = True
+
+        elif not storage.special_low_mfi_buy and A_UP < A_DOWN and A_DOWN >= 50 and portfolio.btc > 0.01 and SHORT > vwapsell and Market_SLOPE_long < 0.5 and storage.breakout_buy == False: # and Market_SLOPE_long < 0.5#
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Normal Sell')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.enable_easy_sell = False
+            storage.bought_above_senkou_a = False
+            storage.MFI_spike_sar_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_sell_sar = False
+
+    #Normal Sell for BREAKOUT Buy
+        #removed  and current_price > C1 #1.0.3.5 added and mfi_ema_slope < 0.1
+        elif A_UP < A_DOWN and A_DOWN >= 90 and mfi_ema_slope < 0.1 and portfolio.btc > 0.01 and current_price > C1 and SHORT > vwapsell and Market_SLOPE_long < 0.5 and storage.breakout_buy: # and Market_SLOPE_long < 0.5#
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Normal BREAKOUT Sell')
+            log(A_UP)
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.special_low_mfi_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.MFI_spike_sar_buy = False
+            storage.bought_above_senkou_a = False
+            storage.enable_easy_sell = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_sell_sar = False
+
+        #Breakout sell to get out of bad position faster
+        #1.0.3.5 added and mfi_ema_slope < 0.1
+        elif portfolio.btc > 0.01 and mfi_ema_slope < 0.1 and storage.breakout_buy and not storage.mathew_crazy_buy and not storage.breakout_wait_for_ema and SHORT < longMa: # and Market_SLOPE_long < 0.5#
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Quicker BREAKOUT Sell')
+            log(A_UP)
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.special_low_mfi_buy = False
+            storage.MFI_spike_sar_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.bought_above_senkou_a = False
+            storage.enable_easy_sell = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_sell_sar = False
+    
+        #SAR sell for BREAKOUT BUY added and not storage.mathew_crazy_buy
+        elif z > current_price and not storage.mathew_crazy_buy and portfolio.btc > 0.01 and storage.breakout_buy and storage.breakout_sell_sar: # and Market_SLOPE_long < 0.5#
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('SAR BREAKOUT Sell')
+            log(A_UP)
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.MFI_spike_sar_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.bought_above_senkou_a = False
+            storage.special_low_mfi_buy = False
+            storage.enable_easy_sell = False    
+            storage.breakout_sell_sar = False
+    
+
+        elif current_price < C2 and portfolio.btc > 0.01 and storage.enable_chandelier_exit and storage.C_Buy == False:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Chandelier Exit')
+            storage.short_exit = True
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.MFI_spike_sar_buy = False
+            storage.mathew_crazy_buy = False
+            storage.special_low_mfi_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.bought_above_senkou_a = False
+            storage.normal_buy = False
+            storage.enable_easy_sell = False
+    
+    #    elif storage.breakout_buy and storage.second_breakout == False and portfolio.btc > 0.01 and A_UP < A_DOWN and storage.volatility_past > volatility:
+    #        if storage.limit_order:
+    #            ACTION = -1
+    #        else:
+    #            try:
+    #                order = sell(pairs.btc_usd)
+    #            except TradewaveFundsError, e:
+    #                log('Not enough funds!')
+    #            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+    #                log('Unable to place buy order: %s' % e.message)
+    #        log('We Bought the Breakout too early - Selling')
+    #        storage.short_exit = True
+    #        storage.breakout_buy = False
+    #        storage.second_breakout = True
+
+        elif storage.short_exit and storage.chandelier_buy and ((A_UP > A_DOWN) or (MFI < 40)) and current_price > C1 and MFI < 70 and Market_SLOPE_long > 0.5 and storage.quick_exit_sell == False:
+            if storage.limit_order:
+                ACTION = 1
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Chandelier Buy')
+            storage.short_exit = False
+            storage.C_Buy = True
+            storage.re_buy_correction_with_sar = False
+            storage.breakout_buy = False
+            storage.ichi_cloud_SAR_sell = False
+            storage.second_breakout = False
+            storage.get_ready_normal_buy = False
+            storage.obv_diff_sell = False
+            log(Market_SLOPE_long)
+            storage.MFI_buy_next_sar = False
+        
+        #1.0.3.5    
+        #Experimental weak breakout sell based on MFI slope and price slope
+        elif storage.breakout_buy and storage.volatility_past > -175 and mfi_ema_slope > 2 and price_ema_slope < 0 and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('MFI BREAKOUT Sell')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.MFI_spike_sar_buy = False
+            storage.normal_buy = False
+            storage.special_low_mfi_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.bought_above_senkou_a = False
+            storage.enable_easy_sell = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_sell_sar = False            
+        
+        #1.0.3.5    removed and (Decimal(senkou_A) - Decimal(current_price)) < 5
+        #Another experimental weak breakout sell based on MFI slope and price slope
+        elif storage.breakout_buy and not storage.mathew_crazy_buy and storage.volatility_past > -175 and mfi_ema_slope < 1.5 and mfi_slope < 1.5 and price_ema_slope > 4.5 and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Price Spike no MFI Spike BREAKOUT Sell')
+           
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.normal_buy = False
+            storage.special_low_mfi_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.bought_above_senkou_a = False
+            storage.MFI_spike_sar_buy = False
+            storage.enable_easy_sell = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_sell_sar = False          
+        
+#        elif storage.MFI_spike_sar_buy and (MFI < 40 or z2 > current_price) and portfolio.btc > 0.01:
+#            if storage.limit_order:
+#                ACTION = -1
+#            else:
+#                try:
+#                    order = sell(pairs.btc_usd)
+#                except TradewaveFundsError, e:
+#                    log('Not enough funds!')
+#                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+#                    log('Unable to place buy order: %s' % e.message)
+#            log('Sell for MFI spike no price spike')
+#            storage.C_Buy = False
+#            storage.breakout_buy = False
+#            storage.second_breakout = False
+#            storage.normal_buy = False
+#            storage.special_low_mfi_buy = False
+#            storage.breakout_wait_for_ema = False
+#            storage.bought_above_senkou_a = False
+#            storage.MFI_spike_sar_buy = False
+#            storage.enable_easy_sell = False
+#            storage.mathew_crazy_buy = False
+#            storage.breakout_sell_sar = False 
+            
+        #1.0.3.5    removed and (Decimal(senkou_A) - Decimal(current_price)) < 5
+        #Another experimental weak breakout sell based on MFI slope and price slope
+#        elif mfi_ema_slope > 3 and price_ema_slope < 1 and z2 < current_price and portfolio.usd > 1:
+#            if storage.limit_order:
+#                ACTION = -1
+#            else:
+#                try:
+#                    order = buy(pairs.btc_usd)
+#                    storage.bought_price = order.price
+#                except TradewaveFundsError, e:
+#                    log('Not enough funds!')
+#                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+#                    log('Unable to place buy order: %s' % e.message)
+#            log('MFI spike no price spike Buy')
+#            storage.C_Buy = False
+#            storage.breakout_buy = False
+#            storage.ichi_cloud_SAR_sell = False
+#            storage.get_ready_normal_buy = False
+#            storage.get_ready_normal_buy = False
+#            storage.second_breakout = False
+#            storage.re_buy_correction_with_sar = False
+#            storage.bought_above_senkou_a = False
+#            storage.normal_buy = True
+#            storage.breakout_sell_sar = False
+#            storage.obv_diff_sell = False
+#            storage.MFI_buy_next_sar = False
+#            storage.MFI_spike_sar_buy = True
+#            storage.special_low_mfi_buy = True
+
+        
+        #changed from -7 to -3 - took out and volatility < -3 and added A_DOWN < 10
+        elif do_BREAKOUT_buy and A_UP < A_DOWN and portfolio.usd > 7 and A_DOWN < 10:
+            if storage.limit_order:
+                ACTION = 1
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('BREAKOUT BUY')
+            storage.short_exit = False
+            storage.C_Buy = True
+            storage.obv_diff_sell = False
+            storage.re_buy_correction_with_sar = False
+            storage.ichi_cloud_SAR_sell = False
+            storage.get_ready_normal_buy = False
+            if senkou_A < current_price:
+                storage.bought_above_senkou_a = True
+            storage.breakout_buy = True
+            storage.MFI_buy_next_sar = False
+            
+        #Sell if there is a upward volatility above 300 then we will sell early to be sure we don't get caught
+        elif storage.enable_easy_sell and not storage.MFI_spike_sar_buy and current_price < longMa and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Quick Exit Sell')
+            storage.short_exit = True
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.mathew_crazy_buy = False
+            storage.enable_easy_sell = False
+            storage.bought_above_senkou_a = False
+            storage.breakout_wait_for_ema = False
+            storage.quick_exit_sell = True
+            storage.MFI_spike_sar_buy = False
+            storage.special_low_mfi_buy = False
+            storage.normal_buy = False
+            storage.enable_easy_sell = False
+    
+        elif storage.quick_exit_sell and current_price < talib_market_S[-1] and current_price < C1 and portfolio.usd > 7:
+            if storage.limit_order:
+                ACTION = 1
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Re-buy Quick Exit Sell')
+            storage.short_exit = False
+            storage.C_Buy = True
+            storage.get_ready_normal_buy = False
+            storage.obv_diff_sell = False
+            storage.breakout_buy = False
+            storage.ichi_cloud_SAR_sell = False
+            storage.re_buy_correction_with_sar = False
+            storage.quick_exit_sell = False
+            storage.enable_easy_sell = False
+            storage.MFI_buy_next_sar = False
+        
+        #Added for August 2014 for the Mathews Crazy Buy - the Talib sar goes longer, so we use it
+        elif not storage.sar_wait_to_sell and storage.mathew_crazy_buy and z2 > current_price and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Special SAR2 sell for Mathews Crazy Buy')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.MFI_spike_sar_buy = False
+            storage.special_low_mfi_buy = False
+            storage.normal_buy = False
+            storage.enable_easy_sell = False
+            storage.mathew_crazy_buy = False
+            storage.bought_above_senkou_a = False
+            storage.breakout_sell_sar = False
+            storage.breakout_wait_for_ema = False
+            
+        #ADDED FOR MAY 2014
+        elif storage.re_buy_correction_with_sar and storage.sar_just_switched_up and not storage.obv_wait_sar_cross and (MFI - 1) > 60 and z < current_price and portfolio.usd > 1:
+            if storage.limit_order:
+                ACTION = 1
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('Re-buy after correction sell with SAR')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.re_buy_correction_with_sar = False
+            storage.get_ready_normal_buy = False
+            storage.ichi_cloud_SAR_sell = False
+            storage.normal_buy = True
+            if senkou_A < current_price:
+                storage.bought_above_senkou_a = True
+            storage.breakout_sell_sar = False
+            storage.obv_diff_sell = False  
+            storage.MFI_buy_next_sar = False
+
+#ADDED MFI < 35 - for June, and then added ((MFI < 35) or (MFI > 60)) and it worked good for June
+        elif storage.special_low_mfi_buy and not storage.MFI_spike_sar_buy and z > current_price and ((MFI < 35) or (MFI > 60)) and portfolio.btc > 0.01:
+            if storage.limit_order:
+                ACTION = -1
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('SAR Exit for Low MFI Buy')
+            storage.short_exit = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.mathew_crazy_buy = False
+            storage.breakout_wait_for_ema = False
+            storage.bought_above_senkou_a = False
+            storage.MFI_spike_sar_buy = False
+            storage.enable_easy_sell = False
+            storage.quick_exit_sell = False
+            storage.special_low_mfi_buy = False
+            storage.normal_buy = False
+            storage.enable_easy_sell = False      
+            
+            #ADDED MAY 2014 also added and SHORT_slope < -2
+            #for good numbers in April May use z not z2
+        if MFI < 30 and z > current_price and mfi_ema_slope < -1 and SHORT_slope < -2 and portfolio.usd > 10:
+            storage.get_ready_MFI_sar_buy = True
+            log('MFI Slope less than -1')
+            log('SHORT Slope: %f' % (SHORT_slope))
+        #this was MFI < 40
+        if storage.get_ready_MFI_sar_buy and MFI < 40 and z > current_price and mfi_ema_slope_past < mfi_ema_slope and mfi_ema_slope > 0 and portfolio.usd > 10:
+            storage.MFI_buy_next_sar = True
+            storage.get_ready_MFI_sar_buy = False
+            log('SHORT Slope: %f' % (SHORT_slope))
+            log('waiting sar MFI: %f SLOPE: %f' % (MFI,mfi_ema_slope))
+            
+                #added and SHORT_slope > 1 # 1.0.3.5 added and ((MFI - 1) > ema_mfi[-1] or mfi_ema_slope > 0.5)
+        if storage.MFI_buy_next_sar and storage.sar_just_switched_up and ((MFI - 1) > ema_mfi[-1] or mfi_ema_slope > 0.5) and SHORT_slope > 1 and MFI < 52 and portfolio.usd > 10:
+            if storage.limit_order:
+                ACTION = 1
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('LOW MFI buy when SAR uptrend')
+            storage.short_exit = False
+            storage.C_Buy = True
+            storage.obv_diff_sell = False
+            storage.breakout_buy = False
+            storage.get_ready_normal_buy = False
+            storage.ichi_cloud_SAR_sell = False
+            storage.re_buy_correction_with_sar = False
+            storage.quick_exit_sell = False
+            storage.enable_easy_sell = False  
+            if senkou_A < current_price:
+                storage.bought_above_senkou_a = True
+            storage.MFI_buy_next_sar = False
+            storage.special_low_mfi_buy = True
+            log('SHORT Slope: %f' % (SHORT_slope))
+            
+        elif MFI > 52 and storage.get_ready_MFI_sar_buy:
+            storage.get_ready_MFI_sar_buy = False
+            log('cancel 1 MFI')
+        elif MFI > 52 and storage.MFI_buy_next_sar:
+            storage.MFI_buy_next_sar = False
+            log('cancel 2 MFI')
+        elif portfolio.btc > 0.1 and storage.get_ready_MFI_sar_buy:
+            storage.get_ready_MFI_sar_buy = False
+            log('cancel 3 MFI')
+        elif portfolio.btc > 0.1 and storage.MFI_buy_next_sar:
+            storage.MFI_buy_next_sar = False  
+            log('cancel 4 MFI')
+        
+      
+            
+            
+#    elif breakout == -1 and A_UP < A_DOWN and portfolio.usd > 1:
+#        if storage.limit_order:
+#            ACTION = 1
+#        else:
+#            try:
+#                order = buy(pairs.btc_usd)
+#                storage.bought_price = order.price
+#            except TradewaveFundsError, e:
+#                log('Not enough funds!')
+#            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+#                log('Unable to place buy order: %s' % e.message)
+#        log('BREAKOUT BUY')
+#        storage.short_exit = False
+#        storage.C_Buy = True
+        else:
+            ACTION = 0
+        
+        #store SAR
+        storage.sar_past = z
+        #store SAR2
+        storage.sar2_past = z2
+        #store volatility
+        storage.volatility_past = volatility
+    
+
+
+        if storage.bot_stats:
+            storage.price = current_price
+            storage.buyholdpercent = (((storage.buyhold * storage.price) - (storage.buyhold * storage.firstprice))/(storage.buyhold * storage.price)) * 100
+            currentmoney = (portfolio.btc * storage.price) + portfolio.usd
+            currentbtc = (portfolio.usd / storage.price) + portfolio.btc
+            currentmoneypercent = ((currentmoney - storage.startportfolio)/storage.startportfolio) * 100
+            log('BuyHold Increase: %s%%' % (round(storage.buyholdpercent,3)))
+            log('BuyHold: $%s %s BTC' % (round(storage.buyhold * storage.price),round(storage.buyhold_btc,3)))
+            log('Bot: $%s Bot Increase: %s%%' % (round(currentmoney),round(currentmoneypercent,3)))
+            log('Bot Profit: $%s' % (round(currentmoney - storage.startportfolio,3)))
+            log('Current Price: $%s' % (round(storage.price,2)))
+            log('Current BTC equivalent: %s' % round(currentbtc,3))
+            log('########################################')
+        storage.restart = 1
+        storage.tick_for_stats = storage.tick_for_stats + 1
+        if storage.tick_for_stats == 7:
+            storage.tick_for_stats = 0
+        '''##########################################################'''
+
+    #2h Bot - this is disabled
+    if 1 == 3:
+    #if info.tick % (120 / (info.interval / 60)) == 0 or info.tick == 0:  
+        #if obv_array[-1] < obv_ema[-1] and obv_array[-2] > obv_ema[-2]:
+        #    log('OBV CROSSOVER')
+        C               = data(interval=intervals._4h).btc_usd.warmup_period('close')
+        V               = data(interval=intervals._4h).btc_usd.warmup_period('volume')  
+        obv_array       = talib.OBV(C,V)
+
+        price_2 = data(interval=intervals._2h).btc_usd.close
+        price_2_past = data(interval=intervals._2h).btc_usd[-1].close
+        
+
+    
+        obv_ema = talib.MA(obv_array, timeperiod = 6, matype=1)
+        #obv_ema_long = talib.MA(obv_array, timeperiod = 6, matype=1)
+        cci = talib.CCI(C,C,C,timeperiod=20)
+        
+        if storage.sar_switch_uptrend:
+            storage.price_high = price_2
+            storage.obv_trend = obv_array[-1]
+            storage.sar_switch_uptrend = False
+            log('reset price sar')
+        
+        storage.higher_high = False
+        
+        if PLOT_OBV:
+            plot('obv', obv_array[-1], secondary = True)
+
+
+        if price_2_past > storage.price_high and price_2 < price_2_past:
+            if storage.price_high != 0:
+                log('Higher High')
+                storage.higher_high = True
+                log('Price Diff: %f' % (((price_2_past - storage.price_high) / price_2_past) * 100))
+                storage.price_diff = ((price_2_past - storage.price_high) / price_2_past) * 100
+                log('Past High: %f Last Price: %f' % (storage.price_high,price_2_past))
+                if storage.obv_trend < obv_array[-2] and obv_array[-2] < 0:
+                    log('OBV Diff: %f' % (abs(((obv_array[-2] - storage.obv_trend) / obv_array[-2]) * 100)))
+                    storage.obv_diff = abs(((obv_array[-2] - storage.obv_trend) / obv_array[-2]) * 100)
+                elif storage.obv_trend > obv_array[-2] and obv_array[-2] > 0:
+                    log('OBV Diff: %f' % (((obv_array[-2] - storage.obv_trend) / obv_array[-2]) * 100))
+                    storage.obv_diff = ((obv_array[-2] - storage.obv_trend) / obv_array[-2]) * 100
+                    log('positive less')
+                elif obv_array[-2] > storage.obv_trend and obv_array[-1] > 0:
+                    log('OBV Diff: %f' % (((obv_array[-2] - storage.obv_trend) / obv_array[-2]) * 100))
+                    storage.obv_diff = ((obv_array[-2] - storage.obv_trend) / obv_array[-2]) * 100
+                    log('positive more') 
+                elif storage.obv_trend > obv_array[-2] and obv_array[-2] < 0 and storage.obv_trend > 0:
+                    log('OBV Diff: %f' % -(((storage.obv_trend - obv_array[-2]) / storage.obv_trend) * 100))
+                    storage.obv_diff = -((storage.obv_trend - obv_array[-2]) / storage.obv_trend) * 100
+                    log('positive negative less')
+                else:
+                    log('OBV Diff: %f' % (((storage.obv_trend - obv_array[-2]) / storage.obv_trend) * 100))
+                    log('not abs')
+                    storage.obv_diff = ((storage.obv_trend - obv_array[-2]) / storage.obv_trend) * 100
+                log('Past OBV: %f Current OBV: %f' % (storage.obv_trend,obv_array[-2]))
+                
+            storage.price_high = price_2_past
+            storage.obv_trend = obv_array[-2]
+        if storage.price_high == 0:
+            storage.price_high = price_2
+            storage.obv_trend = obv_array[-1]
+        plot('the_high', storage.price_high)
+
+
+   
+        if storage.obv_past == 0:    
+            storage.obv_past = obv_array[-1]
+    
+        if obv_ema[-1] < obv_array[-1]:
+            storage.obv_counter = storage.obv_counter + 1
+    
+
+        if obv_ema[-1] > obv_array[-1]:
+            storage.obv_counter = 0
+            
+        obv_diff = Decimal(obv_ema[-1]) - Decimal(obv_array[-1])
+        
+        #ADDED storage.short_exit = True so that April wouldn't do a really bad buy
+      
+        #ADDED MAY 2014
+        if storage.obv_diff_sell and storage.obv_diff > 20 and storage.price_diff > 2 and z < current_price and portfolio.usd > 1:
+            if storage.limit_order:
+                can_buy = True
+            else:
+                try:
+                    order = buy(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            log('OBV Diff re-buy')
+            storage.C_Buy = False
+            storage.breakout_buy = False
+            storage.second_breakout = False
+            storage.obv_diff_sell = False
+            storage.re_buy_correction_with_sar = False
+            storage.normal_buy = True
+            storage.ready_mat_n_breakout_buy = False
+            storage.breakout_sell_sar = False
+            storage.obv_diff_sell = False
+            storage.d_aroon_at_buy = A_DOWN
+            storage.sar_mfi_buy_price = current_price
+            storage.sar_mfi_buy = True        
+        
+        #ADDED THIS JULY 2014
+        if storage.higher_high and storage.obv_diff < -28 and storage.price_diff > 0.7 and portfolio.btc > 0.01:
+            if storage.limit_order:
+                can_sell = True
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+                log('OBV Large Diff Small Price Increase July Sell')
+                storage.C_Buy = False
+                storage.breakout_buy = False
+                storage.second_breakout = False
+                storage.normal_buy = False
+                storage.just_sold = True
+                storage.enable_easy_sell = False
+                storage.breakout_sell_sar = False
+                storage.normal_sar_sell = True
+                storage.obv_wait_sar_cross = True
+                storage.mathew_crazy_buy = False
+                storage.mathew_up_buy = False
+                log(storage.obv_counter)
+                storage.obv_counter = 0
+                storage.obv_sale = True
+                storage.strong_obv_buy = False
+                storage.sar_mfi_buy = False
+                storage.mat_breakout_buy = False
+                storage.normal_mat_breakout_buy = False
+                storage.mat_breakout_norm_wait_ema = False
+                storage.obv_diff_sell = True
+                storage.short_exit = True
+
+
+        #ADDED THIS JUNE 2014
+        if storage.higher_high and storage.obv_diff < -90 and storage.price_diff > 0.5 and portfolio.btc > 0.01:
+            if storage.limit_order:
+                can_sell = True
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+                log('OBV Large Diff Small Price Increase Sell')
+                storage.C_Buy = False
+                storage.breakout_buy = False
+                storage.second_breakout = False
+                storage.mathew_crazy_buy = False
+                storage.normal_buy = False
+                storage.just_sold = True
+                storage.enable_easy_sell = False
+                storage.breakout_sell_sar = False
+                storage.normal_sar_sell = True
+                storage.mathew_up_buy = False
+                log(storage.obv_counter)
+                storage.obv_counter = 0
+                storage.obv_sale = True
+                storage.obv_wait_sar_cross = True
+                storage.strong_obv_buy = False
+                storage.sar_mfi_buy = False
+                storage.mat_breakout_buy = False
+                storage.normal_mat_breakout_buy = False
+                storage.mat_breakout_norm_wait_ema = False
+                storage.obv_diff_sell = True
+                storage.short_exit = True
+
+        #ADDED THIS JUNE 2014 # april changed to -10
+        if storage.higher_high and storage.obv_diff < -10 and storage.price_diff > 4 and portfolio.btc > 0.01:
+            if storage.limit_order:
+                can_sell = True
+            else:
+                try:
+                    order = sell(pairs.btc_usd)
+                    storage.bought_price = order.price
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+                log('Large Price Increase Large OBV Decrease Sell')
+                storage.C_Buy = False
+                storage.breakout_buy = False
+                storage.second_breakout = False
+                storage.normal_buy = False
+                storage.just_sold = True
+                storage.mathew_crazy_buy = False
+                storage.enable_easy_sell = False
+                storage.breakout_sell_sar = False
+                storage.normal_sar_sell = True
+                storage.mathew_up_buy = False
+                storage.obv_counter = 0
+                storage.obv_wait_sar_cross = True
+                storage.obv_sale = True
+                storage.strong_obv_buy = False
+                storage.sar_mfi_buy = False
+                storage.mat_breakout_buy = False
+                storage.normal_mat_breakout_buy = False
+                storage.mat_breakout_norm_wait_ema = False       
+                storage.obv_diff_sell = True
+                storage.short_exit = True
