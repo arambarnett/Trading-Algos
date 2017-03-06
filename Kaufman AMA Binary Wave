@@ -1,0 +1,174 @@
+import talib
+
+def initialize():
+
+    storage.KAMAlow = None
+    storage.KAMAhigh = None
+
+def tick():
+    
+    period                                      = 20
+    percent                                     = 10    
+
+    C                   = data.btc_usd.warmup_period('close')
+    percent             = percent/Decimal(100)
+    KAMA                = talib.KAMA(C, timeperiod=period)
+    EMA                 = talib.EMA(C, timeperiod=period)
+    MA                  = talib.MA(C, timeperiod=period)
+    Filter              = percent*Decimal(talib.STDDEV(KAMA, period)[-1])
+    Filter              = round(1000*Filter)/1000
+    
+    if info.tick == 0:
+        storage.KAMAlow                         = KAMA[-1]
+        storage.KAMAhigh                        = KAMA[-1]
+    if KAMA[-1] < KAMA[-2]:
+        KAMAlow                                 = KAMA[-1]
+    else:
+        KAMAlow                                 = storage.KAMAlow
+    if KAMA[-1] > KAMA[-2]:
+        KAMAhigh                                = KAMA[-1]
+    else:
+        KAMAhigh                                = storage.KAMAhigh
+        
+    storage.KAMAlow                             = KAMAlow
+    storage.KAMAhigh                            = KAMAhigh
+    
+    BULL_signal = round(1000*(Decimal(KAMA[-1]) - Decimal(KAMAlow)))/1000
+    BEAR_signal = round(1000*(Decimal(KAMAhigh) - Decimal(KAMA[-1])))/1000
+    
+    
+    KAMA_BW                                     = 0
+    if (BULL_signal > Filter):
+        KAMA_BW                                 = 1
+    elif (BEAR_signal > Filter):
+        KAMA_BW                                 = -1
+
+
+        
+    plot('KAMA', KAMA[-1])
+    plot('EMA', EMA[-1])
+    plot('MA', MA[-1])
+    plot('KAMA_BW', KAMA_BW, secondary=True)
+    log('*************')
+    log('BULL..: %s' % BULL_signal)
+    log('BEAR..: %s' % BEAR_signal)
+    log('Filter: %s' % Filter)
+        
+        
+    '''
+    talib.KAMA(params)
+    Input parameters:
+    
+    inReal - array of floats
+    
+    startIdx - start index for input data
+    
+    endIdx - end index for input data
+    
+    optInTimePeriod
+    
+    Returns:
+    
+    array of floats
+    
+    eventrader, while we unfortunately could custom code this out for you,
+    it should be straightforward to construct, the AMA is already available, 
+    you just need to implement the filter part
+    (which is just the standard deviation of the 1 bar KAMA momentum).
+    '''
+
+    '''
+    FilterPercent:=Input("Filter Percentage",0,100,15)/100;
+    Filter:=FilterPercent*Std(AMA-Ref(AMA,-1),Periods);
+    AMALow:=If(AMA<Ref(AMA,-1),AMA,PREV);
+    AMAHigh:=If(AMA>Ref(AMA,-1),AMA,PREV);
+    If(AMA-AMALow>Filter,1{Buy Signal},
+    If(AMAHigh-AMA>Filter,-1{Sell Signal},0{No_Signal}))
+    '''
+    
+    '''    
+    filter=filterp/100 * stdev(ama-nz(ama), length)
+    amalow=ama < nz(ama[1]) ? ama : nz(amalow[1])
+    amahigh=ama > nz(ama[1]) ? ama : nz(amahigh[1])
+    bw=(ama-amalow) > filter ? 1 : (amahigh-ama > filter ? -1 : 0)
+    '''
+    
+    '''
+    def filter = filterPercent/100 * stdev(ama - ama[1], period);
+    rec amaLow = if(ama < ama[1], ama, amaLow[1]);
+    rec amaHigh = if(ama > ama[1], ama, amaHigh[1]);
+    plot BinaryWave = if ama - amalow > filter then 1 else if amaHigh - ama > filter then -1 else 0;
+    '''
+    
+    '''
+    src=close
+    length=input(20)
+    filterp = input(10, title="Filter %", type=integer)
+    cf=input(true, "Color Buy/Sell safe areas?", type=bool)
+    dw=input(true, "Draw Wave?", type=bool)
+     
+    d=abs(src-src[1])
+    s=abs(src-src[length])
+    noise=sum(d, length)
+    efratio=s/noise
+    fastsc=0.6022
+    slowsc=0.0645
+    smooth=pow(efratio*fastsc+slowsc, 2)
+    ama=nz(ama[1], close)+smooth*(src-nz(ama[1], close))
+    
+    filter=filterp/100 * stdev(ama-nz(ama), length)
+    amalow=ama < nz(ama[1]) ? ama : nz(amalow[1])
+    amahigh=ama > nz(ama[1]) ? ama : nz(amahigh[1])
+    bw=(ama-amalow) > filter ? 1 : (amahigh-ama > filter ? -1 : 0)
+    
+    hline(0)
+    '''
+    
+    
+    '''
+    # KAUFMANBINARYWAVE
+    #  http://www.thinkscripter.com
+    # thinkscripter@gmail.com
+    # Last Update 27 Feb 2009
+    
+    declare lower;
+    input price = close;
+    input period = 20;
+    input filterPercent = 10;
+    def diff = AbsValue(price - price[1]);
+    def signal = AbsValue(price - price[period]);
+    def noise = sum(diff, period);
+    def efRatio = signal / noise;
+    def fastSC = 0.6022;
+    def slowSC = 0.0645;
+    def smooth = Power(efratio * fastSC + slowSC, 2);
+    rec ama = compoundValue(period, "visible data" = ama[1] + smooth * (price - ama[1]), "historical data" = price
+    );
+    
+    
+    def filter = filterPercent/100 * stdev(ama - ama[1], period);
+    rec amaLow = if(ama < ama[1], ama, amaLow[1]);
+    rec amaHigh = if(ama > ama[1], ama, amaHigh[1]);
+    plot BinaryWave = if ama - amalow > filter then 1 else if amaHigh - ama > filter then -1 else 0;
+    
+    KAMA Binary Wave 
+    Periods:=Input("Time Periods",1,1000,10);
+    Direction:=CLOSE-Ref(CLOSE,-periods);
+    Volatility:=Sum(Abs(ROC(CLOSE,1,$)),periods);
+    ER:=Abs(Direction/Volatility);
+    FastSC:=2/(2+1);
+    SlowSC:=2/(30+1);
+    SSC:=ER*(FastSC-SlowSC)+SlowSC;
+    Constant:=Pwr(SSC,2);
+    AMA:=If(Cum(1)=periods+1,Ref(CLOSE,-1) + 
+    constant*(CLOSE-Ref(CLOSE,-1)),PREV + 
+    constant*(CLOSE-PREV));
+    
+    FilterPercent:=Input("Filter Percentage",0,100,15)/100;
+    Filter:=FilterPercent*Std(AMA-Ref(AMA,-1),Periods);
+    AMALow:=If(AMA<Ref(AMA,-1),AMA,PREV);
+    AMAHigh:=If(AMA>Ref(AMA,-1),AMA,PREV);
+    
+    If(AMA-AMALow>Filter,1{Buy Signal},
+    If(AMAHigh-AMA>Filter,-1{Sell Signal},0{No_Signal}))
+    '''
