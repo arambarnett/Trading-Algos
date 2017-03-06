@@ -1,0 +1,49 @@
+''' 
+Kerry Lovvorn Version 
+
+http://stockcharts.com/school/doku.php?id=chart_school:technical_indicators:keltner_channels
+'''
+
+import talib
+
+
+def tick():
+
+    log(data.btc_usd.price)
+    Patr1       = 10    # ATR PERIOD
+    Patr2       = 50
+    Patr3       = 100
+    Pema        = 20    # EMA PERIOD
+
+    # warmup HLC
+    PAIR    = data.btc_usd
+    H       = PAIR.warmup_period('high')
+    L       = PAIR.warmup_period('low')   
+    C       = PAIR.warmup_period('close')
+    
+    ATR1 = talib.ATR(H, L, C, timeperiod=Patr1)[-1]
+    ATR2 = talib.ATR(H, L, C, timeperiod=Patr2)[-1]
+    ATR3 = talib.ATR(H, L, C, timeperiod=Patr3)[-1]    
+    
+    EMA  = talib.EMA(C, timeperiod=Pema)[-1]
+    
+    KCH3 = EMA + 3*ATR1
+    KCH2 = EMA + 2*ATR1
+    KCH1 = EMA + ATR1
+    KCL1 = EMA - ATR1
+    KCL2 = EMA - 2*ATR1
+    KCL3 = EMA - 3*ATR1
+    
+    plot('EMA', EMA)
+    plot('KCH3', KCH3)
+    plot('KCH2', KCH2)    
+    plot('KCH1', KCH1)
+    plot('KCL1', KCL1)
+    plot('KCL2', KCL2)
+    plot('KCL3', KCH3)    
+    
+    
+    plot('ATR1', ATR1, secondary=True)
+    plot('ATR2', ATR2, secondary=True)
+    plot('ATR3', ATR3, secondary=True)
+    plot('F', -50, secondary=True)
