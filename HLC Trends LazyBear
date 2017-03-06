@@ -1,0 +1,27 @@
+import talib
+
+def tick():
+    
+    PAIR            = data.btc_usd  # PRIMARY TRADING PAIR
+    
+    C               = PAIR.warmup_period('close')
+    H               = PAIR.warmup_period('high')
+    L               = PAIR.warmup_period('low')
+    
+    PC              = 5
+    PH              = 34
+    PL              = 13
+    
+    emaC            = talib.MA(C, timeperiod=PC, matype=1)[-1]
+    emaH            = talib.MA(H, timeperiod=PH, matype=1)[-1]
+    emaL            = talib.MA(L, timeperiod=PL, matype=1)[-1] 
+    
+    BULL            = emaC - emaH
+    BEAR            = emaL - emaC
+    
+    plot('BULL', BULL, secondary=True)
+    plot('BEAR', BEAR, secondary=True)
+    plot('0', 0, secondary=True)
+    plot('20', 20, secondary=True)
+    plot('n20', -20, secondary=True)
+    plot('F', -200, secondary=True)
