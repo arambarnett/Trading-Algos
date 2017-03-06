@@ -1,0 +1,761 @@
+# Mathew Gainer 1.0 by Sungkhum
+# 1 min BTC/USD on BTC-e or Bitfinex
+# Using Litepresence's Iceberg Order
+# Litepresence LTC: LL92nc7U8dYeVfdG5cmQwPsSDEYPLphY7B
+# Sungkhum BTC: 1Pu3a4kNEPYiszh8xFv3x7JqWrpbDs28XK
+# using MATHEWS EMA DIFFERENTIAL CORRECTION INDICATOR ported and tuned for Tradewave by Sungkhum
+# Version 1.0
+# MATTHEWS BTC : 1DaAZ3bcHzJcZbMx3r1CGYr1oGE33QCU1y
+#
+# THIS IS ONLY TESTED WITH SMALL AMOUNTS OF COIN - WORKS WELL IN SOME MARKETS
+#
+# **** I used this live for the month of August with good results ****
+#
+
+import time
+import talib
+import numpy as np
+import random
+start_time = time.time()
+SELL_GRID = -1.0 #if price goes below this percentage of the last high, sell (like a stop loss)
+REAL_SELL_GRID = -0.5 #if price goes below original buy price by this percentage, sell
+PROFIT_TAKE = 2 #if price goes up this much then sell everything
+BUY_GRID = 0.3 #if price goes up this percentage from the last buy then buy some more
+#MARTINGALE_BID_INCREMENT = 0.011 #How much coin you want to buy at each grid
+LIMIT = 50 # if the dollar value of your coin and fiat together go below this value then the bot no longer buys
+
+
+
+PAIR                        = pairs.btc_usd
+SAR_PLOT                    = True  # False turns off SAR plot
+SAR_AGGREGATION             = 300  # Match to tick = no auto adjust  
+SAR_SENSITIVITY             = 1     # whole, default 2
+SAR_RISE_LOOKBACK           = 0     # 0 = MAX, else whole # period
+SAR_RISE_INITIAL            = 0.022  # Inital Rising Acceleration
+SAR_RISE_ACCELERATION       = 0.005  # Rising Acceleration
+SAR_RISE_MAX                = 2   # Maximum Rising Acceleration
+SAR_FALL_LOOKBACK           = 0     # 0 = MAX, else whole # period
+SAR_FALL_INITIAL            = 0.022  # Initial Falling Acceleration
+SAR_FALL_ACCELERATION       = 0.005  # Falling Acceleration
+SAR_FALL_MAX                = 2   # Maximum Falling Acceleration
+
+def parabolic_sar(pair, sar_plot, aggregation, sensitivity,
+rise_lookback, rise_initial, rise_acceleration, rise_max,
+fall_lookback, fall_initial, fall_acceleration, fall_max):
+    
+
+    import math    
+    
+    start_time = time.time()
+    
+    ''' Seed psuedo random 24 character hash string '''
+    fall_hash = 2**(1/2.0)*fall_max + 3**(1/2.0)*fall_acceleration + 5**(1/2.0)*(fall_initial+1)
+    rise_hash = 2**(1/3.0)*rise_max + 3**(1/3.0)*rise_acceleration + 5**(1/3.0)*(rise_initial+1)
+    lookback_hash = 2**(1/2.0)*fall_lookback + 3**(1/2.0)*rise_lookback + 5**(1/2.0)*sensitivity
+    pair_agg_hash = int(10**25*pair**(1/2.0) / aggregation**(1/2.0))
+    sar_hash = str(int(10**25*Decimal((fall_hash+lookback_hash)/rise_hash))+pair_agg_hash)[-24:] 
+
+    ''' Initialize Stored Variables '''    
+    extreme_point           = 'parabolic_sar_extreme_point_'+sar_hash
+    acceleration            = 'parabolic_sar_acceleration_'+sar_hash
+    direction               = 'parabolic_sar_direction_'+sar_hash
+    previous                = 'parabolic_sar_previous_'+sar_hash
+    storage[extreme_point]  = storage.get(extreme_point, 0)
+    storage[acceleration]   = storage.get(acceleration, 0)
+    storage[direction]      = storage.get(direction, 0)     
+    storage[previous]       = storage.get(previous, 0)  
+    
+
+    ''' Auto Adjust Thresholds Based on Aggregation '''
+    power                   = 1.235  # Bigger reduces SAR crosses
+    aggregation_ratio       = aggregation/float(info.interval)
+    power_ratio             = aggregation_ratio**power
+
+    sensitivity             = int(math.ceil(sensitivity))
+    rise_lookback           = int(rise_lookback*aggregation_ratio)
+    rise_initial            = rise_initial/power_ratio
+    rise_acceleration       = rise_acceleration/power_ratio
+    rise_max                = rise_max*aggregation_ratio
+    fall_lookback           = int(fall_lookback*aggregation_ratio)
+    fall_initial            = fall_initial/power_ratio
+    fall_acceleration       = fall_acceleration/power_ratio
+    fall_max                = fall_max*aggregation_ratio
+    
+    ''' Prevent Rattle on 1m ticks '''
+    offset                  = 0
+    if info.interval == 60:
+        fall_initial        = 0
+        rise_initial        = 0
+        offset              = 0.002
+        
+    ''' Log Adjusted Thresholds and persistent variable names on 1st tick '''
+    if 1:
+        if info.tick == 0:
+            log('storage.' + extreme_point)
+            log('storage.' + acceleration)
+            log('storage.' + direction)
+            log('storage.' + previous)        
+            log('tick size....: %s' % info.interval)
+            log('aggregation..: %s' % aggregation)        
+            log('agg_ratio....: %s' % aggregation_ratio)
+            log('power........: %s' % power)
+            log('power_ratio..: %.2f' % power_ratio)
+            log('sensitivity..: %s' % sensitivity)
+            log('rise_lookback: %s' % rise_lookback)
+            log('rise_initial.: %s' % rise_initial)
+            log('rise_accel...: %s' % rise_acceleration)
+            log('rise_max.....: %s' % rise_max)
+            log('fall_lookback: %s' % fall_lookback)
+            log('fall_initial.: %s' % fall_initial)
+            log('fall_accel...: %s' % fall_acceleration)
+            log('fall_max.....: %s' % fall_max)
+            log('offset.......: %s' % offset)
+    
+    '''  High, Low, and Close '''    
+    high    = data(interval=aggregation)[pair].period(2, 'high') 
+    low     = data(interval=aggregation)[pair].period(2, 'low')     
+    close   = data(interval=aggregation)[pair].period(2, 'close') 
+
+    ''' Build array of candles to look for SAR cross '''
+    low_array   = []
+    high_array  = []
+    for z in range(sensitivity, 0, -1):
+        low_array.append(low[-z])
+        high_array.append(high[-z])
+
+    ''' Determine if inital SAR is Rising or Falling '''        
+    if info.tick == 0:        
+        if close[-1] > close[-2]:
+            storage[direction]       = 1
+            storage[previous]        = low[-2]
+            storage[extreme_point]   = max(high_array)
+            storage[acceleration]    = rise_initial
+        else:            
+            storage[direction]       = -1
+            storage[previous]        = high[-2]
+            storage[extreme_point]   = min(low_array)
+            storage[acceleration]    = -fall_initial   
+
+    ''' Calculate Rising SAR '''
+    # Define New SAR            
+    if storage[direction] == 1:            
+        sar = storage[previous] + storage[acceleration]*(
+            storage[extreme_point] - storage[previous]) 
+        # Update acceleration factor if EP is breached        
+        if high[-1] > storage[extreme_point]:
+            storage[extreme_point] = high[-1]
+            storage[acceleration] = storage[acceleration] + rise_acceleration
+            if storage[acceleration] > rise_max:
+                storage[acceleration] = rise_max   
+        # Define lookback price based on period        
+        if fall_lookback == 0: 
+            lookback = storage[extreme_point]
+        else:
+            lookback = []    
+            for z in range(fall_lookback):
+                lookback.append(high[-(z+1)])
+            lookback = max(lookback)
+            lookback = min(lookback, storage[extreme_point])
+        # If new SAR cross, then Stop and Reverse
+        if min(low_array) < sar:
+            storage[direction] = -2
+            storage[acceleration] = -fall_initial
+            sar = lookback * float(1 + offset)   
+            log('***** SAR CROSS *****')        
+
+    ''' Calculate Falling SAR '''
+    # Define New SAR       
+    if storage[direction] == -1:        
+        sar = storage[previous] + storage[acceleration]*(
+            storage[previous] - storage[extreme_point])   
+        # note storage.AF is negative in this instance  
+        # Update acceleration factor if EP is breached  
+        if low[-1] < storage[extreme_point]:
+            storage[extreme_point] = low[-1]
+            storage[acceleration] = storage[acceleration] - fall_acceleration 
+            if storage[acceleration] < -fall_max:
+                storage[acceleration] = -fall_max
+        # Define lookback price based on period     
+        if rise_lookback  == 0: 
+            lookback = storage[extreme_point]
+        else:
+            lookback = []    
+            for z in range(rise_lookback):
+                lookback.append(L[-(z+1)])
+            lookback = min(lookback)
+            lookback = max(lookback, storage[extreme_point])  
+        # If new SAR cross, then Stop and Reverse
+        if max(high_array) > sar:
+            storage[direction] = 1
+            storage[acceleration] = rise_initial 
+            sar = lookback * float(1 - offset)
+            log('***** SAR CROSS *****')        
+            
+    ''' Update Direction and Prior SAR '''
+    if storage[direction] == -2:
+        storage[direction] = -1
+    storage[previous] = sar  
+    
+    ''' Plot Parabolic SAR '''
+    if sar_plot:
+        #plot('low', low[-1])
+        #plot('high', high[-1]) 
+        plot('Parabolic_SAR', sar)
+    
+    ''' Log Tick Time ''' 
+    finish_time = time.time()
+    tick_time = round((finish_time - start_time), 5)
+    #log(tick_time)
+    
+    return sar    
+
+def martingale(sar):
+
+    m_can_buy = False
+    m_can_sell = False
+    
+    price = data[PAIR_1].close
+    price_high = data[PAIR_1].close
+
+    #calculate bid increment based on amount of orders capabilty
+    martingale_bid_increment =   round((storage.startportfolio / price) / 7,3) #want to have 25 orders regardless
+    if martingale_bid_increment < 0.011:
+        martingale_bid_increment = 0.011
+    
+  #  if storage.new_buy_price < storage.buy_price:
+  #      storage.new_buy_price = storage.buy_price
+    if price_high > storage.new_buy_price:
+        storage.new_buy_price = price_high
+    
+    #log('Last Buy Price: %f Price I/D: %f' % (storage.buy_price,((((price - Decimal(storage.buy_price)) / price)) * 100)))
+    #log(storage.last_order_action)
+    #took out storage.last_order_action == 'BUY' and 
+    
+    
+    
+    #if ((((price - Decimal(storage.new_buy_price)) / price)) * 100) <= SELL_GRID and portfolio.btc > 0.01:
+    
+        #log('Price High: %f' % storage.new_buy_price)
+    
+    #if storage.last_order_action == 'BUY' and price - Decimal(storage.buy_price) <= -4:
+        #price went down 2% from last buy/high, so sell
+   
+   
+   
+   
+   #     m_can_sell = True
+#        storage.buy_amount = 0
+        #reset to buy with MA again
+ #       storage.first_buy = False
+ #       storage.buy_number = 0
+ #       log('Stop Loss Sell from High at -2.0 Percent')
+ #       storage.was_buy = False
+ #       storage.new_buy_price = 0
+    
+    
+    
+    
+       
+    elif ((((price - Decimal(storage.real_buy_price)) / price)) * 100) <= REAL_SELL_GRID and portfolio.btc > 0.01:
+        #log('Price High: %f' % storage.new_buy_price)
+    
+    #if storage.last_order_action == 'BUY' and price - Decimal(storage.buy_price) <= -4:
+        #price went down 2% from last buy/high, so sell
+        m_can_sell = True
+        storage.buy_amount = 0
+        #reset to buy with MA again
+        storage.first_buy = False
+        storage.buy_number = 0
+        log('Stop Loss Sell from Original Buy Price at -0.5 Percent')
+        storage.was_buy = False
+        storage.new_buy_price = 0
+    #TAKE PROFIT
+    elif ((((price - Decimal(storage.first_buy_price)) / price)) * 100) >= PROFIT_TAKE and portfolio.btc > 0.01 and storage.sar_buy == False:
+        #log('Price High: %f' % storage.new_buy_price)
+        storage.take_profit_ready = True
+        
+    
+    #if storage.last_order_action == 'BUY' and price - Decimal(storage.buy_price) <= -4:
+        #price went down 2% from last buy/high, so sell
+
+
+
+    elif ((((price - Decimal(storage.buy_price)) / price)) * 100) >= BUY_GRID and portfolio.usd > 1:
+    #elif storage.last_order_action == 'BUY' and price - Decimal(storage.buy_price) >= 4:
+        #price went up 2% from last buy, so buy double the amount we did last time
+        storage.buy_number = storage.buy_number + 1
+        storage.buy_amount = (martingale_bid_increment * storage.buy_number)
+        storage.buy_amount = martingale_bid_increment
+        storage.buy_amount_total = martingale_bid_increment
+        storage.buy_portfolio = portfolio.btc
+        m_can_buy = True
+        #log('Should Buy')
+        #log(storage.buy_amount)
+        storage.was_buy = True
+        
+    if storage.take_profit_ready and sar > price and portfolio.btc > 0.01:
+        m_can_sell = True
+        storage.buy_amount = 0
+        #reset to buy with MA again
+        storage.first_buy = False
+        storage.buy_number = 0
+        log('Take Profit Sell')
+        storage.was_buy = False
+        storage.new_buy_price = 0
+        storage.take_profit_ready = False
+    
+#    #Test to see if buying on down-trend is better or not    
+#    elif storage.last_order_action == 'BUY' and ((((price - Decimal(storage.buy_price)) / price)) * 100) >= -BUY_GRID and portfolio.usd > 1:
+#    #elif storage.last_order_action == 'BUY' and price - Decimal(storage.buy_price) >= 4:
+#        #price went up 2% from last buy, so buy double the amount we did last time
+#        portfolio.update()
+#        storage.buy_number = storage.buy_number + 1
+#        storage.buy_amount = (martingale_bid_increment * storage.buy_number)
+#        storage.buy_amount = martingale_bid_increment
+#        storage.buy_amount_total = martingale_bid_increment
+#        storage.buy_portfolio = portfolio.btc
+#        m_can_buy = True
+#        log('Should Buy at Downtrend')
+#        log(storage.buy_amount)
+#        storage.was_buy = True
+
+    return m_can_buy, m_can_sell, martingale_bid_increment
+
+def Mathews_EMA():
+    period_short = 2
+    period_long = 3
+    the_ema_period = 8
+    storage.MATHEWS_EMA_D = storage.get("MATHEWS_EMA_D", 0)
+    storage.diff_high = storage.get("diff_hig", 0)
+    storage.prev_d = storage.get("prev_d", 0)
+
+    
+    if storage.MATHEWS_EMA_D == 0:
+        what_the_price = data(interval=intervals._15m).btc_usd.period(250, 'close')
+        C = 200
+        storage.MATHEWS_EMA_D = [(talib.MA(what_the_price, timeperiod=period_short, matype=1)[-(x + 1)] / talib.MA(what_the_price, timeperiod=period_long, matype=1)[-(x + 1)]) - 1 for x in range(200,0,-1)][-C:]
+
+    diff_high = np.array(storage.diff_high)
+    the_dema_array = np.array(storage.MATHEWS_EMA_D)
+    ema_warmup = data(interval=intervals._15m).btc_usd.warmup_period('close')
+    ema_short1 = talib.MA(ema_warmup, timeperiod=period_short, matype=1)[-1]
+    ema_long1 = talib.MA(ema_warmup, timeperiod=period_long, matype=1)[-1]
+    
+    d = (ema_short1 / ema_long1) - 1
+    
+    
+    the_dema_array = np.hstack((the_dema_array,d))
+    
+    ema = talib.MA(the_dema_array, timeperiod=the_ema_period, matype=1)[-1]
+    d = d - ema
+    storage.prev_d = d
+
+    diff_high = np.hstack((diff_high,d))
+    
+    #Change storage.the_dema_array to List so we can store it and limit it to 1000
+    the_dema_array = the_dema_array.tolist()
+    storage.MATHEWS_EMA_D = the_dema_array[-1001:]
+    storage.diff_high = diff_high.tolist()
+    storage.diff_high = storage.diff_high[-1001:] 
+
+    return d, diff_high, ema        
+    
+def market_detection(ema_length):
+    ema_market = round(100*data(interval=intervals._1h).btc_usd.ema(ema_length))/100
+    ema_market_past = round(100*data(interval=intervals._1h).btc_usd[-1].ema(ema_length))/100
+    slope = round(100*(ema_market - ema_market_past))/100
+    
+    return slope
+    
+
+
+'''ICEBERG USER CONTROLS ###########################################'''
+ICEBERG_ENGAGED     = True
+PLOT_SPREAD         = False
+LOG_ORDER_ARGUMENTS = False
+BACKTESTING         = True
+
+PERIOD_ICE_STD      = 2
+PERIOD_ICE_VWAP     = 2
+PERIOD_MINMAX       = 2
+X_SPREAD            = 0.5
+X_DISTRIBUTION      = 0.5
+
+MIN_ORDER           = 0.2
+MAX_ORDER           = 0.6
+MIN_TIMEOUT         = 25
+MAX_TIMEOUT         = 35
+QTY_ICEBERGS        = 3
+
+EXCHANGE_MINIMUM    = 0.015
+PAIR_1              = pairs.btc_usd
+FEE                 = fees[exchanges.btce][PAIR_1] # 0.002
+'''#################################################################'''
+
+def iceberg_orders_update(pair_1, period_ice_std, period_ice_vwap, x_spread, x_distribution, max_order,
+min_order, fee, plot_spread, log_order_arguments, exchange_minimum, period_minmax, 
+min_timeout, max_timeout):
+
+    portfolio.update()
+
+    '''Calculate Spread'''
+    candle_1m_P1        = data(interval=60)[pair_1]
+    H_1m_P1             = candle_1m_P1.warmup_period('high')
+    L_1m_P1             = candle_1m_P1.warmup_period('low')
+    short_min           = talib.MIN(L_1m_P1, timeperiod=period_minmax)[-1]
+    short_max           = talib.MAX(H_1m_P1, timeperiod=period_minmax)[-1]
+    mean_price          = candle_1m_P1.vwap(period_ice_vwap)
+    standard_dev        = candle_1m_P1.std(period_ice_std)
+    spread              = standard_dev*Decimal(0.75*x_spread)
+    distribution        = float(standard_dev*Decimal(0.2*x_distribution))
+    mean_ask            = float(mean_price + spread)
+    mean_bid            = float(mean_price - spread)
+    mean_ask            = (mean_ask + short_max) / 2
+    mean_bid            = (mean_bid + short_min) / 2
+
+    '''Update Holdings'''
+    current_currency    = portfolio.usd
+    current_assets      = portfolio.btc   
+    holding_assets      = False
+    holding_currency    = False
+    if current_currency > Decimal(exchange_minimum)*mean_price:
+        holding_currency = True
+    if current_assets > exchange_minimum:
+        holding_assets = True    
+    potential_currency  = current_currency + (current_assets*mean_price)
+    potential_assets    = current_assets + (current_currency/mean_price)
+
+    '''Randomize Order Placement'''       
+    ask_price           = round((random.gauss(mean_ask, distribution)), 4)
+    bid_price           = round((random.gauss(mean_bid, distribution)), 4)
+    # Fold the Gaussian distributions if outside of range
+    if ask_price > short_max:
+        ask_price = round((short_max - (ask_price-short_max)), 4)
+    if bid_price < short_min:
+        bid_price = round((short_min + (short_min - bid_price)), 4)
+    # Redistribute if beyond mean_price
+    maximum = max(ask_price, short_max, mean_price)
+    minimum = min(bid_price, short_min, mean_price)
+    if ask_price < mean_price:
+        ask_price = round((random.uniform(float(mean_price), float(maximum))), 4)
+    if bid_price > mean_price:
+        bid_price = round((random.uniform(float(minimum), float(mean_price))), 4)
+
+    '''Randomize Order Size and Timeout'''
+    order_size          = round((max_order - random.random()*(max_order-min_order)), 3)
+    max_bid             = round((float(0.95)*(float(current_currency)/bid_price)/float(1 + fee)), 3)
+    ask_size            = round((order_size),3)
+    bid_size            = round((float(0.95)*order_size/float(1 + fee)), 3)
+    if order_size > max_bid:
+        bid_size        = max_bid
+    if order_size > current_assets:
+        ask_size        = current_assets 
+    order_timeout       = random.randint(min_timeout, max_timeout)
+
+    '''Plot Spread'''
+    if plot_spread:
+        plot    ('TOP_MARGIN', mean_ask)
+        plot    ('BOTTOM_MARGIN', mean_bid)
+        plot    ('MEAN_PRICE', mean_price)  
+        plot    ('MAX', short_max)
+        plot    ('MIN', short_min)
+
+    ''' Log First Round Sample Order Arguments'''
+    if log_order_arguments and (info.tick==0):  
+        log('TEST REPORT: ORDER ARGUMENTS')
+        log('ask_size: %s' % ask_size)
+        log('ask_price: %s' % ask_price)
+        log('bid_size: %s' % bid_size)        
+        log('bid_price: %s' % bid_price)
+        log('order_timeout: %s' % order_timeout)
+        log('holding_assets: %s' % holding_assets)
+        log('holding_currency: %s' % holding_currency)
+        log('*******************************')
+
+    return(current_currency, current_assets, mean_price, potential_currency, potential_assets, 
+        ask_size, bid_size, ask_price, bid_price, order_timeout, holding_assets, holding_currency)
+
+def iceberg_order(can_buy, can_sell, qty_icebergs, backtesting, pair_1):
+    if info.tick == 0:
+        log('******* ICEBERG ENGAGED *******')
+        log('*******************************')
+    import time
+    from datetime import datetime, timedelta    
+    storage.last_action = storage.get('last_action', None)
+    storage.cumulative_trades = storage.get('cumulative_trades', 0)
+    storage.log_no_action_taken = storage.get('log_no_action_taken', 0)
+    if not can_buy and not can_sell:
+        if not storage.log_no_action_taken:
+            log('*******************************')            
+            log('**** NO ACTION TO BE TAKEN ****')
+            log('*******************************')               
+            storage.log_no_action_taken = time.time()
+
+    else:
+        iceberg_order_number = 0
+        end_time = time.time()
+        begin_time = time.time()
+        while 1:
+            if end_time - begin_time > 50:
+                break
+            '''Iceberg Orders Update'''
+            (current_currency, current_assets, mean_price, potential_currency, potential_assets, 
+                ask_size, bid_size, ask_price, bid_price, order_timeout, holding_assets, 
+                holding_currency) = iceberg_orders_update(PAIR_1, PERIOD_ICE_STD, PERIOD_ICE_VWAP, 
+                X_SPREAD, X_DISTRIBUTION, MAX_ORDER, MIN_ORDER, FEE, PLOT_SPREAD, LOG_ORDER_ARGUMENTS, 
+                EXCHANGE_MINIMUM, PERIOD_MINMAX, MIN_TIMEOUT, MAX_TIMEOUT)
+            delay = int(order_timeout/Decimal(qty_icebergs))   
+
+            if can_buy:
+                if storage.last_action is not 1:
+                    storage.cumulative_trades += 1
+
+                    elapsed = round((time.time() - storage.log_no_action_taken), 2)
+                    sec = timedelta(seconds=int(elapsed))
+                    d = datetime(1,1,1) + sec
+                    log("%d:%d:%d:%d D:H:M:S since last order" % (d.day-1, d.hour, d.minute, d.second))                    
+                    log('%s Seconds since last order' % elapsed)
+                    log('Buying, Trade Number: %s' % storage.cumulative_trades)
+                storage.last_action = 1    
+                if holding_currency:
+                    storage.log_no_action_taken = 0                
+                    iceberg_order_number += 1
+                    log("Iceberg BID Number %s at %s" % (iceberg_order_number, bid_price))
+                    log("Timeout: %s Delay until next order: %s" % (order_timeout, delay))
+                    buy(pair_1, amount=bid_size, price=bid_price, timeout=order_timeout)
+                    storage.real_buy_price = bid_price
+                else:
+                    break
+                if not backtesting:
+                    time.sleep(delay)    
+                end_time = time.time()    
+
+            if can_sell:
+                if storage.last_action is not -1:
+                    storage.cumulative_trades += 1
+                    elapsed = round((time.time() - storage.log_no_action_taken), 2)
+                    sec = timedelta(seconds=int(elapsed))
+                    d = datetime(1,1,1) + sec
+                    log("%d:%d:%d:%d D:H:M:S since last order" % (d.day-1, d.hour, d.minute, d.second))                    
+                    log('%s Seconds since last order' % elapsed)                   
+                    log('Selling, Trade Number: %s' % storage.cumulative_trades)
+                storage.last_action = -1   
+                if holding_assets:
+                    storage.log_no_action_taken = 0            
+                    iceberg_order_number += 1
+                    log("Iceberg ASK Number %s at %s" % (iceberg_order_number, ask_price))  
+                    log("Timeout: %s Delay until next order: %s" % (order_timeout, delay))                    
+                    sell(pair_1, amount=ask_size, price=ask_price, timeout=order_timeout)                        
+                else:
+                    break
+                if not backtesting:
+                    time.sleep(delay) 
+                end_time = time.time()
+
+            if not can_buy and not can_sell:
+                break  
+
+def iceberg_off(can_buy, can_sell, pair_1, exchange_minimum):
+    if info.tick == 0:
+        log('ICEBERGS OFF - TEST TRADE LOGIC')
+        log('*******************************')            
+    candle   = data(interval=60)[pair_1]        
+    last     = Decimal(candle.warmup_period('close')[-1])
+    if can_buy and (portfolio.usd/last > exchange_minimum):
+        buy(pair_1)
+    if can_sell and (portfolio.btc > exchange_minimum):
+        sell(pair_1) 
+        
+
+def initialize():
+    #storage.first_buy = storage.get('first_buy', False)
+    storage.first_buy = False
+    storage.buy_price = storage.get('buy_price', 0)
+    storage.sell_price = storage.get('sell_price', 0)
+    storage.buy_number = storage.get('buy_number', 0)
+    storage.sell_number = storage.get('sell_number', 0)
+    storage.buy_amount = storage.get('buy_amount', 0)
+    storage.total_buy_amount = storage.get('total_buy_amount', 0)
+    storage.amount_bought = storage.get('amount_bought', 0)
+    storage.amount_bought_this_time = storage.get('amount_bought_this_time', 0)
+    storage.was_buy = storage.get('was_buy', False)
+    storage.new_buy_price = storage.get('new_buy_price', 0)
+    storage.buy_amount_total = storage.get('buy_amount_total', 0)
+    storage.buy_portfolio = storage.get('buy_portfolio', 0)
+    storage.portfolio_start = 0
+    storage.real_buy_price = storage.get('real_buy_price', 0)
+    storage.take_profit_ready = storage.get('take_profit_ready', 0)
+    
+    storage.still_need_to_buy = storage.get('still_need_to_buy', 0)
+    storage.can_buy = storage.get('can_buy', False)
+    storage.can_sell = storage.get('can_sell', False)
+    
+    storage.d_buy = storage.get('d_buy', False)
+    storage.d_ready_buy = storage.get('d_ready_buy', False)
+    storage.past_d = 0
+    storage.first_buy_price = storage.get('first_buy_price', False)
+    storage.now_we_buy = storage.get('now_we_buy', False)
+    
+    storage.sar_buy = False
+    
+    #Bot Stats
+    storage.buyhold = storage.get('buyhold', 0)
+    storage.buyhold_btc = storage.get('buyhold_btc', 0)
+    storage.price = storage.get('price', 0)
+    storage.firstprice = storage.get('firstprice', 0)
+    storage.startportfolio = storage.get('startportfolio', 0)
+    storage.buyholdpercent = storage.get('buyholdpercent', 0)
+    storage.tick_for_stats = 0
+    storage.restart = 0
+    
+    storage.bot_stats = False
+def tick():
+
+    if info.tick == 0:
+        storage.begin_time = time.time()
+    
+    z = parabolic_sar(PAIR, SAR_PLOT, SAR_AGGREGATION, SAR_SENSITIVITY,
+        SAR_RISE_LOOKBACK, SAR_RISE_INITIAL, SAR_RISE_ACCELERATION, SAR_RISE_MAX,
+        SAR_FALL_LOOKBACK, SAR_FALL_INITIAL, SAR_FALL_ACCELERATION, SAR_FALL_MAX)
+    
+    current_price = data[PAIR_1].close 
+    price_high = data[PAIR_1].high
+    price_low = data[PAIR_1].low
+    
+    plot('price_low', price_low)
+    plot('price_high', price_high)
+############# BOT STATS ################
+    #Store start portfolio
+    if storage.startportfolio == 0:
+        storage.startportfolio = (portfolio.btc * current_price) + portfolio.usd
+        storage.buyhold = ((portfolio.btc * current_price) + portfolio.usd) / current_price
+        storage.buyhold_btc = (portfolio.usd / current_price) + portfolio.btc
+        storage.firstprice = current_price  
+############ END STATS ###################
+
+    #Nov - Dec 2013
+    sell_threshold =0.0045
+    buy_threshold = -0.004900
+    buy_threshold = -0.004900
+    
+    d, dHigh, another_ema = Mathews_EMA()
+    
+    
+    can_buy = False
+    can_sell = False
+    
+    '''### INSERT YOUR LOGIC HERE ###############################'''
+    #If we made the first buy, then enable the Anti-Martingale
+    if (portfolio.btc > 0.015) or storage.first_buy:
+        can_buy, can_sell, bid_increment = martingale(z)
+    else:
+        bid_increment = round((storage.startportfolio / current_price) / 25,3) #want to have 25 orders regardless
+    
+    if bid_increment < 0.011:
+        bid_increment = 0.011
+        
+    #if storage.first_buy:
+    #    log(((((current_price - Decimal(storage.first_buy_price)) / current_price)) * 100))
+    
+    #Sell when we bought on sar uptrend
+    if storage.sar_buy and portfolio.btc > 0.01 and z > current_price:
+        can_sell = True
+        storage.sar_buy = False
+        log('SAR UPTREND OVER SO SELL')
+
+    if can_buy or can_sell:
+        if ICEBERG_ENGAGED:
+            iceberg_order(can_buy, can_sell, QTY_ICEBERGS, BACKTESTING, PAIR_1)    
+
+        else:
+            iceberg_off(can_buy, can_sell, PAIR_1, EXCHANGE_MINIMUM)
+        #log('Current Price: %f' % current_price)
+        
+
+
+    if d <= -0.001 and storage.first_buy == False and portfolio.usd > 1:
+        storage.d_ready_buy = True
+#    # OPTION #1
+#    if storage.d_ready_buy and d > storage.past_d:
+#        if d < -0.0005:
+#            storage.d_buy = True
+#        else:
+#            storage.d_ready_buy = False
+#            storage.d_buy = False
+    # OPTION #2
+    if storage.d_ready_buy and d > storage.past_d:
+        
+        storage.d_buy = True
+    x1 = data.btc_usd.ema(30)
+    plot('ema', x1)
+    if storage.d_buy:
+        
+        x2 = data.btc_usd[-1].ema(30)
+        if x1 > x2 and (Decimal(x1) - Decimal(x2)) > 0.1:
+            storage.now_we_buy = True
+            log('X1: %f X2: %f' % (x1,x2))
+        
+    if storage.d_buy and storage.now_we_buy and storage.first_buy == False and portfolio.usd > 1:
+        can_buy = True
+        storage.first_buy = True
+        storage.was_buy = True
+        storage.buy_amount = bid_increment
+        storage.buy_amount_total = bid_increment
+        if z < current_price and d >= -0.002:
+            storage.sar_buy = True
+            log('SAR in uptrend')
+        storage.buy_portfolio = portfolio.btc
+        log('First Buy')
+        if ICEBERG_ENGAGED:
+            iceberg_order(can_buy, can_sell, QTY_ICEBERGS, BACKTESTING, PAIR_1)    
+
+        else:
+            iceberg_off(can_buy, can_sell, PAIR_1, EXCHANGE_MINIMUM)
+        storage.buy_number = 1
+        #log('Current Price: %f' % current_price)
+        storage.d_buy = False
+        storage.now_we_buy = False
+        storage.d_ready_buy = False
+        storage.new_buy_price = 0
+        storage.first_buy_price = current_price
+        
+    
+
+    plot('D', d, secondary=True)
+    plot('B', -0.001, secondary=True)
+    plot('S', 0.0008, secondary=True)
+    
+    
+    #log('SAR: %f Price: %f' % (z,current_price))
+    
+    
+    #store d for later
+    storage.past_d = d
+
+    if storage.bot_stats and (storage.tick_for_stats == 6 or storage.restart == 0):
+        storage.price = current_price
+        storage.buyholdpercent = (((storage.buyhold * storage.price) - (storage.buyhold * storage.firstprice))/(storage.buyhold * storage.price)) * 100
+        currentmoney = (portfolio.btc * storage.price) + portfolio.usd
+        currentbtc = (portfolio.usd / storage.price) + portfolio.btc
+        currentmoneypercent = ((currentmoney - storage.startportfolio)/storage.startportfolio) * 100
+        log('BuyHold Increase: %s%%' % (round(storage.buyholdpercent,3)))
+        log('BuyHold: $%s %s BTC' % (round(storage.buyhold * storage.price),round(storage.buyhold_btc,3)))
+        log('Bot: $%s Bot Increase: %s%%' % (round(currentmoney),round(currentmoneypercent,3)))
+        log('Bot Profit: $%s' % (round(currentmoney - storage.startportfolio,3)))
+        log('Current Price: $%s' % (round(storage.price,2)))
+        log('Current BTC equivalent: %s' % round(currentbtc,3))
+    storage.restart = 1
+    storage.tick_for_stats = storage.tick_for_stats + 1
+    if storage.tick_for_stats == 7:
+        storage.tick_for_stats = 0
+    '''##########################################################'''
+
+    iceberg_orders_update(PAIR_1, PERIOD_ICE_STD, PERIOD_ICE_VWAP, X_SPREAD, X_DISTRIBUTION, MAX_ORDER, 
+        MIN_ORDER, FEE, PLOT_SPREAD, LOG_ORDER_ARGUMENTS, EXCHANGE_MINIMUM, PERIOD_MINMAX,
+        MIN_TIMEOUT, MAX_TIMEOUT)    
+
+#    if ICEBERG_ENGAGED:
+#        iceberg_order(can_buy, can_sell, QTY_ICEBERGS, BACKTESTING, PAIR_1)    
+
+#    else:
+#        iceberg_off(can_buy, can_sell, PAIR_1, EXCHANGE_MINIMUM)
