@@ -1,0 +1,29 @@
+
+THRESHOLD = 0.25
+
+def initialize():
+    storage.reset()
+    storage.invested = False
+    log('Short-term Moving Average: %s' % parameters.short_term)
+    log('Long-term Moving Average: %s' % parameters.long_term)
+    
+def tick():
+    short_term = data[info.primary_pair].ma(parameters.short_term)
+    long_term = data[info.primary_pair].ma(parameters.long_term)
+    
+    # Calculate a percentage difference between the two lines
+    diff = 100 * (short_term - long_term) / ((short_term + long_term) / 2)
+    
+    if diff >= THRESHOLD and not storage.invested:
+        buy(info.primary_pair)
+        storage.invested = True
+    elif diff <= -THRESHOLD and storage.invested:
+        sell(info.primary_pair)
+        storage.invested = False
+        
+    plot('short_term', short_term)
+    plot('long_term', long_term)
+
+def stop():
+    if storage.invested:
+        sell(info.primary_pair)
