@@ -1,0 +1,119 @@
+def initialize():
+
+    storage.up_closes       = []
+    storage.down_closes     = []
+    storage.A_GAIN          = 0
+    storage.A_LOSS          = 0
+    storage.RSI             = []
+
+def tick():    
+
+    period          = 20           # Max 249
+    RSI_type        = 1           # 0 = Wilder Smooth, 1 = Cutler SMA, 2 = Modern EMA
+    IN              = 3600         # Aggregated Candle Size
+    instrument      = pairs.btc_usd    
+
+    I               = info.interval # Selected tick interval
+    A               = IN/I          # aggretate / tick interval ratio
+    C               = data(interval=IN)[instrument].warmup_period('close')
+
+
+    # Sort C, greater than, equal to, or less than previous C
+    if info.tick == 0:
+        for z in range(period, 1, -1):
+            if C[-z] > C[-(z+1)]:
+                storage.up_closes.append(C[-z] - C[-(z+1)])
+                storage.down_closes.append(0)
+            if C[-z] < C[-(z+1)]:
+                storage.up_closes.append(0)
+                storage.down_closes.append(C[-(z+1)] - C[-z])   
+            if C[-z] == C[-(z+1)]:                
+                storage.up_closes.append(0)                
+                storage.down_closes.append(0)  
+
+    if C[-1] > C[-2]:                  
+        storage.up_closes.append(C[-1] - C[-2])    
+        storage.down_closes.append(0)  
+    if C[-1] < C[-2]:
+        storage.up_closes.append(0)
+        storage.down_closes.append(C[-2] - C[-1])            
+    if C[-1] == C[-2]:
+        storage.up_closes.append(0)
+        storage.down_closes.append(0)  
+
+    # limit closing data set size to period length
+    storage.up_closes       = storage.up_closes[-period:]
+    storage.down_closes     = storage.down_closes[-period:]
+
+    A = Decimal(A)
+
+    # Average Gain and Loss
+    if info.tick == 0:          # Approximate first tick
+        A_GAIN          = Decimal(sum(storage.up_closes))/(period)
+        A_LOSS          = Decimal(sum(storage.down_closes))/(period)
+    else:
+        if RSI_type == 0:       # Wilder Weighted Smoothing
+            A_GAIN      = (storage.A_GAIN*Decimal(period-(1/A)) + (1/A)*Decimal(storage.up_closes[-1]))/(period)
+            A_LOSS      = (storage.A_LOSS*Decimal(period-(1/A)) + (1/A)*Decimal(storage.down_closes[-1]))/(period)
+
+        ''' type 1 (SMA Method) not currently working with aggregated candles'''
+        if RSI_type == 1:       # Cutler SMA Method
+            A_GAIN      = (1)*Decimal(sum(storage.up_closes))   / (period)
+            A_LOSS      = (1)*Decimal(sum(storage.down_closes)) / (period)
+        
+        if RSI_type == 2:       # Modern EMA Method
+            # K = ( 1 / period ) * 2                            # Alternate Pring EMA K
+            K = Decimal(2) / ( Decimal(1) + Decimal(period))    # Modern EMA K
+            A_GAIN = (K*(1/A) * ( Decimal(storage.up_closes[-1]) - Decimal(storage.A_GAIN) )) + Decimal(storage.A_GAIN)
+            A_LOSS = (K*(1/A) * ( Decimal(storage.down_closes[-1]) - Decimal(storage.A_LOSS) )) + Decimal(storage.A_LOSS)
+
+
+    # Calculate Relative Strength and RS Index
+    nil             = Decimal(0.00000000000000001)              # Prevent divide by zero
+    RS              = (Decimal(A_GAIN)/(Decimal(A_LOSS)+nil))     # Gain Loss Ratio
+    RSI             = Decimal(100) - Decimal(100)/(Decimal(1) + RS)                        # Index Ratio    
+
+
+    # Store Previous Average Gain and Loss
+    storage.A_GAIN = A_GAIN
+    storage.A_LOSS = A_LOSS
+
+    # Build array of previous RSI values
+    storage.RSI.append(round(1000*RSI)/1000)
+    storage.RSI = storage.RSI[-250:]
+
+    plot('RSI', RSI, secondary=True)
+
+
+    #######################################################################
+    # TALIB RSI SANDBOXED FOR REFERENCE ONLY
+    #######################################################################
+    import talib
+    talib_RSI                           = talib.RSI(C, timeperiod = period)
+    talib_RSI_now                       = Decimal(talib_RSI[-1])
+    plot('talib_RSI', talib_RSI_now, secondary=True)    
+    #######################################################################    
+
+    plot('eighty', 80, secondary=True)
+    plot('sixty', 60, secondary=True)
+    plot('fifty', 50, secondary=True)
+    plot('forty', 40, secondary=True)
+    plot('twenty', 20, secondary=True)
+
+    '''
+    log(storage.up_closes)
+    log(storage.down_closes)
+    log(sum(storage.up_closes))
+    log(A_GAIN)
+    log(A_LOSS)
+    log(RS)
+    log(RSI)
+    '''
+
+    '''
+    RS = (average of n bars' up closes) / (average of n bars' down closes)
+    RSI = 100 - ( 100 / ( 1 + RS ) )
+    EMA = ( K x ( C - EMA1 ) ) + EMA1
+    '''
+    
+    
