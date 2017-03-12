@@ -1,0 +1,61 @@
+
+def initialize():
+    
+    storage.invested        = None
+    storage.short_period    = 2
+    storage.vwap_period     = 8
+    storage.aroon_period    = 105
+    storage.mfi_period      = 30   
+    storage.aroon_buy       = 0
+    storage.aroon_sell      = 0
+    storage.mfi             = 41
+
+def tick():
+    
+
+    SHORT                   = data(interval=3600).ltc_btc.ema(storage.short_period)
+    aroon_down, aroon_up    = data(interval=3600).ltc_btc.aroon(storage.aroon_period)
+    mfi                     = data(interval=3600).ltc_btc.mfi(storage.mfi_period)
+    vwap                    = data(interval=3600).ltc_btc.vwap(storage.vwap_period)
+  
+    plot('MFI', mfi, secondary=True)
+    plot('AROON_down', aroon_down, secondary=True)
+    plot('AROON_up', aroon_up, secondary=True)
+    plot('VWAP', vwap)
+    plot('F', -300, secondary=True)
+    
+    if portfolio.ltc > 0.1:
+        storage.invested = True
+    else:
+        storage.invested = False
+        
+    ASSETS = portfolio.ltc
+    CURRENCY = portfolio.btc    
+        
+    if ((aroon_up - aroon_down) > storage.aroon_buy):
+        if (SHORT < vwap): 
+            if not storage.invested:
+                buy(pairs.ltc_btc)
+
+                
+
+    elif (mfi > storage.mfi):
+        if (aroon_up - aroon_down) < storage.aroon_sell:
+            if (SHORT > vwap):
+                if storage.invested:
+                    sell(pairs.ltc_btc)
+
+
+                    
+                    
+# **************************************************************************************
+# Aroon MFI VWAP v1.0
+#
+# litepresence
+#
+# May, 23rd 2014
+#
+# LTC: LhqNNDa76NcEf7EWQVmDTeoy3MiENhpAJv
+#
+# coffescript equivilent: https://cryptotrader.org/backtests/XEtEz9zg3zzySs2yj
+# **************************************************************************************                    
