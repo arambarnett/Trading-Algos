@@ -1,0 +1,88 @@
+import talib
+
+def tick():
+    
+    warm_close                  = data.btc_usd.warmup_period('close') 
+    
+    HT_dcperiod                 = talib.HT_DCPERIOD(warm_close)[-1]
+    HT_trendmode                = talib.HT_TRENDMODE(warm_close)[-1]
+    HT_dcphase                  = talib.HT_DCPHASE(warm_close)[-1]
+    HT_trendline                = talib.HT_TRENDLINE(warm_close)[-1]    
+
+    HT_inphase, HT_quadrature   = talib.HT_PHASOR(warm_close)
+    HT_inphase                  = HT_inphase[-1]
+    HT_quadrature               = HT_quadrature[-1]
+
+    HT_sine, HT_leadsine        = talib.HT_SINE(warm_close)
+    HT_sine                     = HT_sine[-1]
+    HT_leadsine                 = HT_leadsine[-1]
+
+
+    plot('HT_dcperiod',         HT_dcperiod, secondary=True)
+    plot('HT_dcphase',          0.1*HT_dcphase, secondary=True) 
+    plot('HT_trendmode',        20*HT_trendmode, secondary=True) 
+    plot('HT_trendline',        HT_trendline) 
+    plot('HT_inphase',          HT_inphase, secondary=True)
+    plot('HT_quadrature',       (HT_quadrature+100), secondary=True)
+    plot('HT_sine',             10*HT_sine, secondary=True)
+    plot('HT_leadsine',         10*HT_leadsine, secondary=True)
+    
+    if info.tick ==0:
+        plot('600', 600)
+        plot('_200', -200, secondary=True)
+    
+    
+    if info.tick%10==0:
+    
+        log('PRICE.........: %.3f' % data.btc_usd.price)
+        log('HT_dcperiod...: %.3f' % HT_dcperiod)
+        log('HT_dcphase....: %.3f' % HT_dcphase)
+        log('HT_trendmode..: %.3f' % HT_trendmode)
+        log('HT_trendline..: %.3f' % HT_trendline)
+        log('HT_inphase....: %.3f' % HT_inphase)
+        log('HT_quadrature.: %.3f' % HT_quadrature)
+        log('HT_sine.......: %.3f' % HT_sine)
+        log('HT_leadsine...: %.3f' % HT_leadsine)
+        
+        log('***********************')
+    
+    
+    '''
+    HT_DCPERIOD 
+        Hilbert Transform - Dominant Cycle Period
+        "analyze variations of the instantaneous cycles"
+        input:  real values array
+        returns:  dominant cycle period real values array
+        
+    HT_DCPHASE 
+        Hilbert Transform - Dominant Cycle Phase
+        "analyze variations of the instantaneous phase and amplitude"
+        input:  real values array
+        returns:  dominant cycle phase (degrees from 0 to 360)  
+        
+    TA_HT_PHASOR 
+        Hilbert Transform - Phasor Components
+        "used to generate in-phase and quadrature components of price series 
+        in order to analyze variations of the instantaneous phase and amplitude"
+        input: real values array
+        returns: inphase real values array
+        returns: quadrature real values array
+    
+    HT_SINE 
+        Hilbert Transform - SineWave
+        "sine of the DC Phase at a specific bar"
+        input: real values array
+        returns: sine real values array from -1 to 1
+        returns: leadsine real values array from -1 to 1
+        
+    HT_TRENDMODE 
+        Hilbert Transform - Trend vs Cycle Mode
+        "analyze trend vs cycle patterns"
+        input: real values array
+        returns: binary array
+
+    HT_TRENDLINE
+        Hilbert Transform - Instantaneous Trendine
+        input: real values array
+        returns: real values array    
+    '''
