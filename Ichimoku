@@ -1,0 +1,113 @@
+def initialize():
+    storage.senkou_BQ = []
+    storage.senkou_AQ = []
+    storage.alternate   = 0
+
+def tick():
+
+    tenkan_period       = 9
+    kijun_period        = 26
+    senkou_B_period     = 52
+    senkou_A_span       = 26
+    senkou_B_span       = 26
+    chikou_span         = -26
+
+
+    #Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2)) 
+    #The default setting is 9 periods and can be adjusted. On a daily 
+    #chart, this line is the mid point of the 9 day high-low range, 
+    #which is almost two weeks.     
+    tenkan_high         = max(data.btc_usd.period(9, 'high')) 
+    tenkan_low          = min(data.btc_usd.period(9, 'low'))
+    tenkan              = (tenkan_high + tenkan_low)/2   
+
+
+    #Kijun-sen (Base Line): (26-period high + 26-period low)/2)) 
+    #The default setting is 26 periods and can be adjusted. On a daily 
+    #chart, this line is the mid point of the 26 day high-low range, 
+    #which is almost one month).  
+    kijun_high          = max(data.btc_usd.period(26, 'high'))
+    kijun_low           = min(data.btc_usd.period(26, 'low'))
+    kijun               = (kijun_high + kijun_low)/2
+
+
+    #Senkou Span A (Leading Span A): (Conversion Line + Base Line)/2)) 
+    #This is the midpoint between the Conversion Line and the Base Line. 
+    #The Leading Span A forms one of the two Cloud boundaries. It is 
+    #referred to as "Leading" because it is plotted 26 periods in the future
+    #and forms the faster Cloud boundary.     
+    senkou_A_last       = (tenkan + kijun)/2
+    storage.senkou_AQ.append(senkou_A_last)
+    storage.senkou_AQ = storage.senkou_AQ[-26:]
+    if len(storage.senkou_AQ) == 26:
+        senkou_A = storage.senkou_AQ.pop(0)
+    else:
+        senkou_A = data.btc_usd.vwap(30)
+
+
+    #Senkou Span B (Leading Span B): (52-period high + 52-period low)/2)) 
+    #On the daily chart, this line is the mid point of the 52 day high-low range, 
+    #which is a little less than 3 months. The default calculation setting is 
+    #52 periods, but can be adjusted. This value is plotted 26 periods in the future 
+    #and forms the slower Cloud boundary.    
+    senkou_B_high       = max(data.btc_usd.period(52, 'high'))
+    senkou_B_low        = min(data.btc_usd.period(52, 'low'))
+    senkou_B_last       = (senkou_B_high + senkou_B_low)/2
+    storage.senkou_BQ.append(senkou_B_last)
+    storage.senkou_BQ   = storage.senkou_BQ[-26:]
+    if len(storage.senkou_BQ) == 26:
+        senkou_B            = storage.senkou_BQ.pop(0)   
+    else:
+        senkou_B = data.btc_usd.vwap(30)
+
+
+
+    market = None    
+    #calculate plots for bull and bear cloud    
+    if senkou_A > senkou_B:
+        market = 'bull'
+        if storage.alternate == 0:
+            bull_cloud = senkou_A
+        elif storage.alternate == 1:
+            bull_cloud = senkou_B
+    else:
+        bull_cloud = senkou_A
+
+    if senkou_B > senkou_A:
+        market = 'bear'
+        if storage.alternate == 0:
+            bear_cloud = senkou_B
+        elif storage.alternate == 1:
+            bear_cloud = senkou_A
+    else:
+        bear_cloud = senkou_B
+
+    if storage.alternate == 0:
+        storage.alternate = 1
+    elif storage.alternate == 1:
+        storage.alternate = 0
+
+
+    #Chikou Span (Lagging Span): Close plotted 26 days in the past
+    #The default setting is 26 periods, but can be adjusted. 
+    chikou = data.btc_usd.close
+
+
+    plot('senkou_A', senkou_A)
+    plot('senkou_B', senkou_B)
+    #plot('tenkan', tenkan)
+    #plot('tenkan_lag', tenkan_lag)
+    #plot('kijun', kijun)
+    #plot('senkou_A_last', senkou_A_last)
+    #plot('senkou_B_last', senkou_B_last)
+    #plot('chikou', chikou)
+
+    plot('bull_cloud', bull_cloud)
+    plot('bear_cloud', bear_cloud)
+
+    log(tenkan)
+    log(kijun)
+    log(senkou_A)
+    log(senkou_B)
+    #log(chikou)
+    log('***** %s market *****' % (market))
