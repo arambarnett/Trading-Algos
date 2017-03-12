@@ -1,0 +1,41 @@
+'''
+litepresence
+
+How to do an "indicator of an indicator" using TAlib
+'''
+
+
+
+
+import talib
+from talib import MA_Type
+# MA_Type: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA, 5=TRIMA, 6=KAMA, 7=MAMA, 8=T3 (Default=SMA)
+
+def tick():
+    greed = 80
+    fear = 20
+
+    warmup = data.btc_usd.warmup_period('close') 
+
+    fastk, fastd = talib.STOCHRSI(warmup, 14, fastk_period=14, fastd_period=3)
+   
+    upperband, middleband, lowerband    = talib.BBANDS(
+        fastk, timeperiod               = 10, 
+        nbdevup                         = 2, 
+        nbdevdn                         = 2, 
+        matype                          = 8)
+    upperband                           = Decimal(upperband[-1])
+    middleband                          = Decimal(middleband[-1])
+    lowerband                           = Decimal(lowerband[-1])
+    
+    fastk = fastk[-1]
+    fastd = fastd[-1]        
+
+    plot('fastk', fastk, secondary=True)
+    plot('fastd', fastd, secondary=True)
+    plot('upper', upperband, secondary=True)
+    plot('lower', lowerband, secondary=True)
+    plot('middle', middleband, secondary=True)
+    plot('greed', greed, secondary=True)
+    plot('fear', fear, secondary=True)
+    plot('F', 600, secondary=True)
