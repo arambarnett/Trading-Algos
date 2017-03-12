@@ -1,0 +1,53 @@
+def update_external_data():
+    
+    storage.reset(); log('storage.reset')
+    try: 
+        fetch_btce_trades()
+    except: 
+        log('trades api failed')
+        pass
+    try:     
+        fetch_btce_ticker()        
+    except: 
+        log('ticker api failed')        
+        pass    
+
+def fetch_btce_trades():
+    
+    api = 'https://btc-e.com/api/2/btc_usd/trades'
+    obj = get_json(api)
+    log((str(obj))[:250])
+    obj = obj[::-1] #reverse list order
+    
+    trades_bids = []
+    trades_asks = []
+    for i in range(len(obj)):
+        if obj[i]['trade_type']=='bid':
+            trades_bids.append(obj[i])
+        elif obj[i]['trade_type']=='ask':
+            trades_asks.append(obj[i])   
+    storage.trades_bid = float((trades_bids)[-1]['price'])
+    storage.trades_ask = float((trades_asks)[-1]['price'])
+    storage.trades_last = float(obj[-1]['price'])
+    
+def fetch_btce_ticker():
+    
+    api = 'https://btc-e.com/api/2/btc_usd/ticker'
+    obj = get_json(api)
+    log((str(obj))[-250:]) 
+    
+    storage.ticker_buy = float(obj['ticker']['buy'])
+    storage.ticker_sell = float(obj['ticker']['sell'])
+    storage.ticker_last = float(obj['ticker']['last'])
+    
+def tick():
+
+    if info.tick==0:
+
+        log('trades_bid..: %.3f (recent green buy market order)' % storage.trades_bid)
+        log('trades_ask..: %.3f (recent red sell market order)' % storage.trades_ask)
+        log('trades_last.: %.3f' % storage.trades_last)
+        log('ticker_buy..: %.3f (lowest on book asking limit order)' % storage.ticker_buy)
+        log('ticker_sell.: %.3f (highest on book bidding limit order)' % storage.ticker_sell)
+        log('ticker_last.: %.3f' % storage.ticker_last)
+
