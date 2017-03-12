@@ -1,0 +1,75 @@
+import talib
+
+def tick():
+
+    log(data.btc_usd.price)
+    
+    t = 14
+    
+    high   = data.btc_usd.warmup_period('high') 
+    low    = data.btc_usd.warmup_period('low')     
+    close  = data.btc_usd.warmup_period('close')     
+
+    plus_di     = talib.PLUS_DI(high, low, close, timeperiod=t)[-1]
+    plus_dm     = talib.PLUS_DM(high, low, timeperiod=t)[-1]
+    minus_di    = talib.MINUS_DI(high, low, close, timeperiod=t)[-1]
+    minus_dm    = talib.MINUS_DM(high, low, timeperiod=t)[-1]
+    dx          = talib.DX(high, low, close, timeperiod=t)[-1]
+    adx         = talib.ADX(high, low, close, timeperiod=t)[-1]
+    adxr        = talib.ADXR(high, low, close, timeperiod=t)[-1]
+    
+    
+    plot('plus_DI', plus_di, secondary=True)
+    plot('plus_DM', plus_dm, secondary=True)
+    plot('minus_DI', minus_di, secondary=True)
+    plot('minus_DM', minus_dm, secondary=True)
+    plot('DX', dx, secondary=True)
+    plot('ADX', adx, secondary=True)
+    plot('ADXR', adxr, secondary=True)
+    
+    if info.tick == 0:
+        plot('_200', -200, secondary=True)
+    plot('25', 25, secondary=True)
+    plot('50', 50, secondary=True)
+    plot('75', 75, secondary=True)
+    
+    # INTERPRETATION:
+    # DMI >>> http://www.investopedia.com/articles/technical/02/050602.asp
+    # ADX >>> http://www.investopedia.com/articles/trading/07/adx-trend-indicator.asp
+    
+    '''
+    TA_PLUS_DI (Plus Directional Indicator)
+        input: high, low, close, timeperiod
+        timeperiod: default = 14, min=1, max=100000
+        return: 0 to 100 (real values array)
+    
+    TA_PLUS_DM (Plus Directional Movement)
+        input: high, low, timeperiod
+        timeperiod: default = 14, min=1, max=100000
+        return: 0 to 100 (real values array)
+
+    TA_MINUS_DI (Minus Directional Indicator)
+        input: high, low, close, timeperiod
+        timeperiod: default = 14, min=1, max=100000
+        return: 0 to 100 (real values array)
+
+    TA_MINUS_DM (Minus Directional Movement)
+        input: high, low, timeperiod
+        timeperiod: default = 14, min=1, max=100000
+        return: 0 to 100 (real values array)    
+
+    TA_DX (Directional Movement Index)
+        input: high, low, close, timeperiod
+        timeperiod: default = 14, min=2, max=100000
+        return: 0 to 100 (real values array)    
+    
+    TA_ADX (Average Directional Movement Index)
+        input: high, low, close, timeperiod
+        timeperiod: default = 14, min=2, max=100000
+        return: 0 to 100 (real values array)
+    
+    TA_ADXR (Average Directional Movement Index Rating)
+        input: high, low, close, timeperiod
+        timeperiod: default = 14, min=2, max=100000
+        return: 0 to 100 (real values array)
+    '''
