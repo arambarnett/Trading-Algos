@@ -1,0 +1,80 @@
+## The Machine 1.0 imported by Sungkhum from https://www.quantopian.com/posts/simple-machine-learning-example
+
+
+from sklearn.ensemble import RandomForestClassifier, AdaBoostClassifier
+from sklearn import svm
+from collections import deque
+import numpy as np
+
+
+def initialize():
+    storage.the_price = 0
+
+    storage.window_length = 20 # Amount of prior bars to study
+    
+    storage.recent_prices = storage.get('recent_prices', list())
+    
+
+    storage.X = storage.get('X', list())
+    storage.Y = storage.get('Y', list())
+    
+    storage.prediction = list() # Stores most recent prediction
+
+def tick():
+
+    
+    classifier = RandomForestClassifier() # Use a random forest classifier
+    
+    # deques are lists with a maximum length where old entries are shifted out
+    recent_prices = deque(storage.recent_prices, maxlen=storage.window_length+2) # Stores recent prices
+    
+    #X = deque(storage.X, maxlen=500) # Independent, or input variables
+    #Y = deque(storage.Y, maxlen=500) # Dependent, or output variable
+
+    #X = list(storage.X, maxlen=500) # Independent, or input variables
+    #Y = list(storage.Y, maxlen=500) # Dependent, or output variable
+    
+    #recent_prices.append(data[info.primary_pair].close)
+    recent_prices = data[info.primary_pair].period(storage.window_length+2, 'close')
+    log(len(recent_prices))
+    
+    if len(recent_prices) == storage.window_length+2: # If there's enough recent price data
+
+        # Make a list of 1's and 0's, 1 when the price increased from the prior bar
+        changes = np.diff(recent_prices) > 0
+        changes = changes.tolist()
+        X = storage.X
+        Y = storage.Y
+        X.append(changes[:-1]) # Add independent variables, the prior changes
+        X = X[-500:]
+        Y.append(changes[-1]) # Add dependent variable, the final change
+        Y = Y[-500:]
+        
+        if len(Y) >= 100: # There needs to be enough data points to make a good model
+            
+            classifier.fit(X, Y) # Generate the model
+            
+            prediction = classifier.predict(changes[1:]) # Predict
+            
+            # If prediction = 1, buy all shares affordable, if 0 sell all shares
+            if prediction == 0 and portfolio.btc > 0.01:
+                try:
+                    order = sell(info.primary_pair)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+            elif prediction == 1 and portfolio.usd > 1:
+                try:
+                    order = buy(info.primary_pair)
+                except TradewaveFundsError, e:
+                    log('Not enough funds!')
+                except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                    log('Unable to place buy order: %s' % e.message)
+
+    #Store stuff
+    #storage.recent_prices = list(recent_prices)
+    
+    storage.X = X
+    
+    storage.Y = Y
