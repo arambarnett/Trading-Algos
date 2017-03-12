@@ -1,0 +1,147 @@
+import numpy as np
+import talib
+
+SHEET_KEY = '1LGcvEpT_lBaoXToL3rH1AZbhq3vnK5GjhKTpiZbrov4'
+
+# https://docs.google.com/spreadsheets/d/1LGcvEpT_lBaoXToL3rH1AZbhq3vnK5GjhKTpiZbrov4/edit#gid=0
+
+
+BEGIN = 1390292419 # Nov 1 2011
+END = 1442275200 # Dec 1 2011
+SHEET_ROWS = 2542
+
+def fetch_sheet(key):
+    obj = get_json('https://spreadsheets.google.com/feeds/list/%s'
+                   '/od6/public/values?alt=json' % SHEET_KEY)
+    entries = obj['feed']['entry']
+    result = {}
+    for entry in entries:
+        cols = [k.split('gsx$')[1] for k in entry.keys() if 'gsx$' in k]
+        for col in cols:
+            value = entry['gsx$%s' % col].values()[0]
+            if col in result:
+                result[col].append(value)
+            else:
+                result[col] = [value]
+    return result
+
+def update_external_data():
+    try:
+        storage.sheet = fetch_sheet(SHEET_KEY)
+    except TradewaveHTTPError, e:
+        log('Problem fetching sheet: %s' % e)
+
+def initialize():
+    storage.reset()
+    storage.sheet = {}
+    
+def sheet_to_lists():
+    
+    if info.tick == 0:
+        n = 3
+        for column, vals in storage.sheet.items():
+            a = 'column' + str(n)
+            storage[a] = vals
+            n-=1
+        storage.column1 = [float(i) for i in storage.column1]
+        z = storage.column2
+        storage.column2 = [float(i) for i in storage.column3]  
+        storage.column3 = [float(i) for i in z]   
+
+def candles():
+    
+    storage.prices = []
+    storage.volumes = []
+    z = 0
+    while z < SHEET_ROWS:
+        storage.prices.append([])
+        storage.volumes.append([0])
+        for i in range(len(storage.column1)):
+            if storage.column1[i] >= (BEGIN + info.interval*z):
+                if storage.column1[i] < (BEGIN + info.interval*(z+1)):
+                    storage.prices[z].append(storage.column2[i])
+                    storage.volumes[z].append(storage.column3[i])                    
+        z+=1
+
+def tick():
+
+    sheet_to_lists()
+    
+    if info.tick == 0:
+        candles()
+
+    storage.data_low = storage.get('data_low', 0)
+    storage.data_high = storage.get('data_high', 0)
+    storage.data_open = storage.get('data_open', 0)
+    storage.data_close = storage.get('data_close', 0)    
+    
+    try:
+        storage.data_low = min(storage.prices[info.tick])
+    except: pass
+    try:
+        storage.data_high = max(storage.prices[info.tick])
+    except: pass        
+    try:
+        storage.data_open = storage.prices[info.tick][0]
+        # a[i][j] would give you the jth element from the ith row.          
+    except: pass        
+    try:
+        storage.data_close = (storage.prices[info.tick]
+                            [len(storage.prices[info.tick])-1])
+    except: pass
+    #storage.data_volume = sum(storage.volumes[info.tick])
+
+
+    plot('high', storage.data_high)
+    plot('low', storage.data_low)
+    plot('open', storage.data_open)
+    plot('close', storage.data_close)    
+    #plot('volume', storage.data_volume, secondary=True)     
+    
+    storage.sim_high = storage.get('sim_high', [])
+    storage.sim_low = storage.get('sim_low', [])
+    storage.sim_open = storage.get('sim_open', [])
+    storage.sim_close = storage.get('sim_close', [])    
+    #storage.sim_volume = storage.get('sim_volume', [])
+    
+    storage.sim_high.append(storage.data_high)
+    storage.sim_low.append(storage.data_low)
+    storage.sim_open.append(storage.data_open)
+    storage.sim_close.append(storage.data_close)
+    #storage.sim_volume.append(storage.data_volume)
+    
+    storage.sim_high = storage.sim_high[-250:]
+    storage.sim_low = storage.sim_low[-250:]
+    storage.sim_open = storage.sim_open[-250:]
+    storage.sim_close = storage.sim_close[-250:]
+    #storage.sim_volume = storage.sim_volume[-250:]    
+    
+    storage.sim_high = [float(x) for x in storage.sim_high]
+    storage.sim_low = [float(x) for x in storage.sim_low]
+    storage.sim_open = [float(x) for x in storage.sim_open]
+    storage.sim_close = [float(x) for x in storage.sim_close]
+    #storage.sim_volume = [float(x) for x in storage.sim_volume]    
+
+
+    sim_high = np.array(storage.sim_high)
+    sim_low = np.array(storage.sim_low)
+    sim_open = np.array(storage.sim_open)
+    sim_close = np.array(storage.sim_close)
+    #sim_volume = np.array(storage.sim_volume)    
+    
+    
+    ma_short = talib.MA(sim_close, timeperiod=20, matype=0)[-1]
+    ma_long = talib.MA(sim_close, timeperiod=90, matype=0)[-1]    
+
+    if ma_short > ma_long:
+        if portfolio.usd > .01:
+            buy(info.primary_pair, price = sim_close[-1])
+            
+    if ma_short < ma_long:
+        if portfolio.btc > .01:
+            sell(info.primary_pair, price = sim_close[-1])
+
+    plot('short', ma_short)
+    plot('long', ma_long)        
+
+  
