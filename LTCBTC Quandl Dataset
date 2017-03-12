@@ -1,0 +1,339 @@
+# litepresence  -  March 2015
+
+# LTCBTC Challenge
+# Data Period 7/15/2012 - 3/15/2015
+
+# You must select primary pair BTC-e BTCUSD to access older data
+# to access data after 3/15/2015, select secondary pair Bitfinex LTCBTC
+
+'''
+for future reference, toward converting to CSV storage objects:
+
+>>> my_list = ['A', 'B', 'C', 'D', 'E']
+>>> print my_list
+['A', 'B', 'C', 'D', 'E']
+>>> my_string = " ".join(str(x) for x in my_list)
+>>> print my_string 
+'A,B,C,D,E'
+>>> my_list = my_string.split(",")
+>>> print my_list
+['A', 'B', 'C', 'D', 'E']
+'''
+
+SHEET_KEY = '1N4Yn-jb-niHrmZ-dL36sYn6p0C_aaY3_OQcj5p9DITI'
+
+
+SPEED = 1
+TICKS = info.max_ticks
+SYMBOL = 'LTCBTC'    
+PAIR = info.primary_pair
+
+import numpy as np
+import talib as ta
+import time
+
+def fetch_sheet(key):
+    obj = get_json('https://spreadsheets.google.com/feeds/list/%s'
+                   '/od6/public/values?alt=json' % SHEET_KEY)
+    entries = obj['feed']['entry']
+    result = {}
+    for entry in entries:
+        cols = [k.split('gsx$')[1] for k in entry.keys() if 'gsx$' in k]
+        for col in cols:
+            value = entry['gsx$%s' % col].values()[0]
+            if col in result:
+                result[col].append(value)
+            else:
+                result[col] = [value]
+    return result
+
+def update_external_data():
+    try:
+        storage.sheet = fetch_sheet(SHEET_KEY)
+    except TradewaveHTTPError, e:
+        log('Problem fetching sheet: %s' % e)
+
+def initialize():
+    storage.reset()
+    storage.sheet = {}
+    storage.live = False
+    try:
+        end = info.end
+    except:
+        storage.live = True    
+    
+def sheet_to_lists():
+    
+    if info.tick == 0:
+        n = 6
+        for column, vals in storage.sheet.items():
+            a = 'column' + str(n)
+            storage[a] = vals  #" ".join(str(x) for x in my_list)
+            n-=1
+        # D-C-F-A-B-E ???? WTF, please explain!            
+        # manually put columns in same order as original sheet
+        a = storage.column1 #open
+        b = storage.column2 #close
+        c = storage.column3 #low
+        d = storage.column4 #unix
+        e = storage.column5 #volume
+        f = storage.column6 #high
+        storage.column1 = [int(i) for i in d] #unix
+        storage.column2 = [float(i) for i in c] #low
+        storage.column3 = [float(i) for i in f] #high
+        storage.column4 = []#[float(i) for i in a] #open
+        storage.column5 = [float(i) for i in b] #close
+        storage.column6 = []#[float(i) for i in e] #volume
+
+def candles():
+    
+    storage.begin = storage.get('begin', info.current_time)
+    BEGIN = storage.begin
+    
+    storage.lows = []
+    storage.highs = []
+    #storage.opens = []
+    storage.closes = []
+    #storage.volumes = []
+    z = 0
+    while z < TICKS:
+        storage.lows.append([])
+        storage.highs.append([])
+        #storage.opens.append([])
+        storage.closes.append([])
+        #storage.volumes.append([])
+        for i in range(len(storage.column1)):
+            if storage.column1[i] >= (BEGIN + 
+                    info.interval*z*SPEED):
+                if storage.column1[i] < (BEGIN + 
+                        info.interval*(z+1)*SPEED):
+                    storage.lows[z].append(storage.column2[i])
+                    storage.highs[z].append(storage.column3[i])
+                    #storage.opens[z].append(storage.column4[i])
+                    storage.closes[z].append(storage.column5[i])
+                    #storage.volumes[z].append(storage.column6[i])
+        z+=1
+def numpy_hlocv():
+    
+    storage.data_low = storage.get('data_low', 0)
+    storage.data_high = storage.get('data_high', 0)
+    #storage.data_open = storage.get('data_open', 0)
+    storage.data_close = storage.get('data_close', 0)    
+    #storage.data_volume = storage.get('data_volume', 0) 
+
+
+    try:
+        storage.data_low = storage.lows[info.tick][0]
+    except: pass
+    try:
+        storage.data_high = storage.highs[info.tick][0]
+    except: pass  
+    '''
+    try:
+        storage.data_open = storage.opens[info.tick][0]
+    except: pass        
+
+    try:
+        storage.data_volume = storage.volumes[info.tick][0]
+    except: pass
+    '''
+    try:
+        storage.data_close = storage.closes[info.tick][0]
+    except: pass
+
+   
+    
+    storage.sim_high = storage.get('sim_high', [])
+    storage.sim_low = storage.get('sim_low', [])
+    #storage.sim_open = storage.get('sim_open', [])
+    storage.sim_close = storage.get('sim_close', [])    
+    #storage.sim_volume = storage.get('sim_volume', [])
+    
+    storage.sim_high.append(storage.data_high)
+    storage.sim_low.append(storage.data_low)
+    #storage.sim_open.append(storage.data_open)
+    storage.sim_close.append(storage.data_close)
+    #storage.sim_volume.append(storage.data_volume)
+    
+    storage.sim_high = storage.sim_high[-100:]
+    storage.sim_low = storage.sim_low[-100:]
+    #storage.sim_open = storage.sim_open[-100:]
+    storage.sim_close = storage.sim_close[-250:]
+    #storage.sim_volume = storage.sim_volume[-100:]    
+    
+    storage.sim_high = [float(x) for x in storage.sim_high]
+    storage.sim_low = [float(x) for x in storage.sim_low]
+    #storage.sim_open = [float(x) for x in storage.sim_open]
+    storage.sim_close = [float(x) for x in storage.sim_close]
+    #storage.sim_volume = [float(x) for x in storage.sim_volume]      
+
+def test():
+    
+    if 0:
+      if info.tick == 0:
+        # Check to make sure columns match google sheet
+        log(storage.column1[0:5])
+        log(storage.column2[0:5])
+        log(storage.column3[0:5])
+        log(storage.column4[0:5])
+        log(storage.column5[0:5])        
+        log(storage.column6[0:5])  
+        log(len(storage.column1))
+        log(len(storage.column2))
+        log(len(storage.column3))
+        log(len(storage.column4))
+        log(len(storage.column5))
+        log(len(storage.column6)) 
+
+def smooth(label, array, ratio):
+    
+    if ratio==1:
+        return array
+    else:
+        smooth = '%s_smooth' % label
+        storage[smooth] = storage.get(smooth, [0,0])
+        if info.tick == 0:
+            storage[smooth][0] = list(array)
+            storage[smooth][1] = list(ta.MA(array, ratio))
+        else:
+            storage[smooth][0].append(array[-1])
+            storage[smooth][0] = storage[smooth][0][-ratio:]    
+            storage[smooth][1].append(sum(storage[smooth][0])/ratio)
+            storage[smooth][1] = storage[smooth][1][-250:]    
+        return np.array(storage[smooth][1])
+
+
+def tick():
+    
+    SAR_KEY = 0.007335
+    
+    if info.tick == 0:
+        storage.begin_time = time.time() 
+        
+        
+    current_max_assets = float(portfolio.btc + 
+                portfolio.usd/data[PAIR].price)
+    current_max_currency = float(portfolio.usd + 
+                portfolio.btc*data[PAIR].price)        
+
+
+
+    if not storage.live:
+      if info.current_time < 1426464000:   # 3/15/2015 
+        #1406851200 8/1/2014  
+        
+        if info.tick == 0:
+            log('BACKTEST')
+        
+        ##################################################
+        '''      Import Quandl Dataset                 '''
+        ##################################################
+        sheet_to_lists()
+        if info.tick == 0:
+            log('Max Ticks: %s' % info.max_ticks)
+            candles()
+        numpy_hlocv()
+        test()
+        ##################################################
+    
+        ##################################################
+        ''' sim_close etc. are numpy arrays length 250 '''
+        ''' use sim_close[-1] is "last"                '''
+        ''' use sim_close for input to TAlib functions '''
+        ##################################################    
+        sim_high = np.array(storage.sim_high)
+        sim_low = np.array(storage.sim_low)
+        #sim_open = np.array(storage.sim_open)
+        sim_close = np.array(storage.sim_close)
+        #sim_volume = np.array(storage.sim_volume)    
+        ##################################################
+        
+
+        
+      else:
+        bfx = exchanges.bitfinex
+        sim_high = data(exchange=bfx).ltc_btc.warmup_period('high')
+        sim_low = data(exchange=bfx).ltc_btc.warmup_period('low')
+        #sim_open = data(exchange=bfx).ltc_btc.warmup_period('open')
+        sim_close = data(exchange=bfx).ltc_btc.warmup_period('close')
+        #sim_volume = data(exchange=bfx).ltc_btc.warmup_period('volume')
+          
+
+    if storage.live:
+        if info.tick == 0:
+            log('TRADING LIVE')
+        storage.sim_high = sim_high = data(interval=43200)[PAIR].period(250,'high')
+        storage.sim_low = sim_low = data(interval=43200)[PAIR].period(250,'low')
+        #storage.sim_open = sim_open = data(interval=43200)[PAIR].period(250,'open')
+        storage.sim_close = sim_close = data(interval=43200)[PAIR].period(250,'close')
+        #storage.sim_volume = sim_volume = data(interval=43200)[PAIR].period(250,'volume')
+ 
+    ratio = 43200/info.interval
+ 
+    ma_long     = smooth('ma_long', 
+                ta.MA(sim_close, timeperiod=90), ratio)  
+
+    ma_short    = smooth('ma_volume', 
+                ta.MA(sim_close, timeperiod=30), ratio) 
+                
+    # handle 'None' values
+    if ma_short[-1] != ma_short[-1]:
+        ma_short[-1] = sim_close[-1]
+    if ma_long[-1] != ma_long[-1]:
+        ma_long[-1] = sim_close[-1]
+
+
+    holding_assets = holding_currency = False
+    if storage.live:
+        if portfolio.btc >= 1:
+            holding_currency = True
+        if portfolio.ltc >= 1:
+            holding_assets = True
+    if not storage.live:
+        if portfolio.usd >= 1:
+            holding_currency = True
+        if portfolio.btc >= 1:
+            holding_assets = True
+
+ 
+    ##### TRADE LOGIC ###########################################  
+    ##### TRADE LOGIC ########################################### 
+    action = 0
+
+    if action == 1:
+        buy(PAIR)
+    if action == -1:
+        sell(PAIR)
+
+    ##### TRADE LOGIC ###########################################  
+    ##### TRADE LOGIC ###########################################  
+
+
+    plot((SYMBOL+'_close'), sim_close[-1], secondary=True)    
+    plot('short', ma_short[-1], secondary=True)
+    plot('long', ma_long[-1], secondary=True)   
+    
+    if 1: # on/off plot high, low, and open
+        plot('high', sim_high[-1], secondary=True)
+        plot('low', sim_low[-1], secondary=True)
+        #plot('open', sim_open[-1])
+    
+    if 0: # on/off plot volume
+        plot('ma_volume', ma_volume[-1], secondary=True)
+        if info.tick == 0: 
+            plot('offset', 7500000, secondary=True)
+        plot('volume', sim_volume[-1], secondary=True)          
+    
+
+def stop():
+    
+    
+    ''' Log Total Backtest Time ''' 
+    end_time = time.time()
+    run_time = float(end_time - storage.begin_time)
+    log('Total Run Time: %.2f' % run_time)
+    
+    if not storage.live:
+        sim_close = np.array(storage.sim_close)
+        if portfolio.btc > 1:
+            sell(info.primary_pair, sim_close[-1])
