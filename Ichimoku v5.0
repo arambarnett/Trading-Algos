@@ -1,0 +1,224 @@
+import numpy as np
+
+PAIR = info.primary_pair
+
+TENKAN_PERIOD       = 9
+KIJUN_PERIOD        = 26
+SENKOU_B_PERIOD     = 52
+SENKOU_A_SPAN       = 26
+SENKOU_B_SPAN       = 26
+CHIKOU_SPAN         = 25
+DEPTH               = 250
+
+BACKTEST = hasattr(info, "end")
+LIVE = not BACKTEST
+
+def Ichimoku(tenkan_period, kijun_period, senkou_B_period, senkou_A_span, senkou_B_span, depth):
+    
+    def Cloud(n, tenkan_period, kijun_period, senkou_B_period, senkou_A_span, senkou_B_span): 
+    
+        storage.senkou_BQ = storage.get('senkou_BQ', [])
+        storage.senkou_AQ = storage.get('senkou_AQ', [])
+    
+        #Tenkan-sen (Conversion Line): (9-period high + 9-period low)/2)) 
+        tenkan_high         = np.max(data[PAIR][-n].period(tenkan_period, 'high')) 
+        tenkan_low          = np.min(data[PAIR][-n].period(tenkan_period, 'low'))
+        tenkan              = (tenkan_high + tenkan_low)/2   
+    
+        #Kijun-sen (Base Line): (26-period high + 26-period low)/2)) 
+        kijun_high          = np.max(data[PAIR][-n].period(kijun_period, 'high'))
+        kijun_low           = np.min(data[PAIR][-n].period(kijun_period, 'low'))
+        kijun               = (kijun_high + kijun_low)/2
+    
+        #Senkou Span A (Leading Span A): (Conversion Line + Base Line)/2)) 
+        senkou_A_last       = (tenkan + kijun)/2
+        storage.senkou_AQ.append(senkou_A_last)
+        storage.senkou_AQ = storage.senkou_AQ[-senkou_A_span:]
+        if len(storage.senkou_AQ) == senkou_A_span:
+            senkou_A = storage.senkou_AQ.pop(0)
+        else:
+            senkou_A = data[PAIR].vwap(senkou_A_span)
+    
+        #Senkou Span B (Leading Span B): (52-period high + 52-period low)/2)) 
+        senkou_B_high       = np.max(data[PAIR][-n].period(senkou_B_period, 'high'))
+        senkou_B_low        = np.min(data[PAIR][-n].period(senkou_B_period, 'low'))
+        senkou_B_last       = (senkou_B_high + senkou_B_low)/2
+        storage.senkou_BQ.append(senkou_B_last)
+        storage.senkou_BQ   = storage.senkou_BQ[-senkou_B_span:]
+        if len(storage.senkou_BQ) == senkou_B_span:
+            senkou_B            = storage.senkou_BQ.pop(0)   
+        else:
+            senkou_B = data[PAIR][-n].vwap(senkou_B_span)
+            
+        #calculate plots for bull and bear cloud    
+        if senkou_A > senkou_B:
+            market = 1
+            bull_cloud = senkou_A if (info.tick%2==0) else senkou_B
+            bear_cloud = senkou_B
+        else:
+            market = -1
+            bear_cloud = senkou_B if info.tick%2==0 else senkou_A
+            bull_cloud = senkou_A
+            
+        storage.tenkan = storage.get('tenkan', [])
+        storage.kijun = storage.get('kijun', [])
+        storage.senkou_A = storage.get('senkou_A', [])
+        storage.senkou_B = storage.get('senkou_B', [])
+        storage.bull_cloud = storage.get('bull_cloud', [])
+        storage.bear_cloud = storage.get('bear_cloud', [])
+        storage.market = storage.get('market', [])
+        
+        storage.tenkan.append(tenkan)
+        storage.kijun.append(kijun)
+        storage.senkou_A.append(senkou_A)
+        storage.senkou_B.append(senkou_B)
+        storage.bull_cloud.append(bull_cloud)
+        storage.bear_cloud.append(bear_cloud)
+        storage.market.append(market)
+    
+        storage.tenkan = storage.tenkan[-depth:]
+        storage.kijun = storage.kijun[-depth:]
+        storage.senkou_A = storage.senkou_A[-depth:]
+        storage.senkou_B = storage.senkou_B[-depth:]
+        storage.bull_cloud = storage.bull_cloud[-depth:]
+        storage.bear_cloud = storage.bear_cloud[-depth:]
+        storage.market = storage.market[-depth:]
+    
+        return (np.array(storage.tenkan), 
+                np.array(storage.kijun), 
+                np.array(storage.senkou_A), 
+                np.array(storage.senkou_B), 
+                np.array(storage.bull_cloud), 
+                np.array(storage.bear_cloud), 
+                np.array(storage.market))
+                
+    if info.tick == 0: 
+        for n in range((250-SENKOU_B_PERIOD),0,-1):
+            tenkan, kijun, senkou_A, senkou_B, bull_cloud, bear_cloud, market = Cloud(
+                n, tenkan_period, kijun_period, senkou_B_period, senkou_A_span, senkou_B_span)
+    else:
+        tenkan, kijun, senkou_A, senkou_B, bull_cloud, bear_cloud, market = Cloud(
+            1, tenkan_period, kijun_period, senkou_B_period, senkou_A_span, senkou_B_span)
+
+    return tenkan, kijun, senkou_A, senkou_B, bull_cloud, bear_cloud, market    
+    
+
+def Chikou(span):
+    
+    def deep(depth, pair):
+        y=np.zeros((1,depth), dtype=float)
+        for i in range(-depth,0): 
+            z=data[pair][i]
+            y[0][i]=z.close
+        close=np.resize(y, (1, np.count_nonzero(y[0]))) 
+        return close[0] 
+        
+    storage.chikou = storage.get('chikou', [])
+    if info.tick == (info.max_ticks-1):
+        storage.chikou = (deep((info.max_ticks), PAIR)).tolist()
+    chikou = np.array(storage.chikou)
+    try:
+        if info.tick < info.max_ticks - span:
+            chikou = chikou[(info.tick+span)]
+        else:
+            chikou = chikou[(info.max_ticks-1)]
+    except: 
+        chikou = data[PAIR].price
+    return chikou
+       
+def instrument():  # called from tick()
+
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    if pair == pairs.btc_cny:
+        pair = 'btccny'
+    if pair == pairs.ltc_cny:
+        pair = 'ltccny'
+    storage.currency_code = ''.join(list((pair)[3:6]))
+    storage.asset_code = ''.join(list((pair)[0:3]))
+    storage.currency_CODE = (storage.currency_code).upper()
+    storage.asset_CODE = (storage.asset_code).upper()
+    return
+
+def holdings():  # called from tick() AND market_ice()
+
+    # Fetch portfolio balance and volume weighted price
+    storage.currency = 0.001 + \
+        float(portfolio[currencies[storage.currency_code]])
+    storage.assets = 0.001 + float(portfolio[currencies[storage.asset_code]])
+    price = storage.mean_price = float(data[PAIR].vwap(2))
+    # Current Maximum assets and currency
+    storage.potential_currency = storage.currency + \
+        (storage.assets * storage.mean_price)
+    storage.potential_assets = storage.assets + \
+        (storage.currency / storage.mean_price)
+    # Initial Maximum assets and currency
+    if info.tick == 0:
+        storage.start_currency = storage.potential_currency
+        storage.start_assets = storage.potential_assets
+
+    # Return On Investment and Percent Invested
+    storage.percent_invested = 100 * storage.assets / storage.potential_assets
+    storage.ROI_currency = (
+        100 * storage.potential_currency / storage.start_currency) - 100
+    storage.ROI_assets = (
+        100 * storage.potential_assets / storage.start_assets) - 100
+
+    # Boolean Wallet States
+    storage.holding_assets = storage.holding_currency = False
+    if storage.currency >= 0.02 * storage.mean_price:
+        storage.holding_currency = True
+    if storage.assets >= 0.01:
+        storage.holding_assets = True
+        
+def tick():
+    
+    instrument()
+    holdings()
+    
+    if BACKTEST:
+        chikou = Chikou(25)
+        plot('chikou_span', chikou)       
+    
+    tenkan, kijun, senkou_A, senkou_B, bull_cloud, bear_cloud, market = Ichimoku(
+        TENKAN_PERIOD, KIJUN_PERIOD, SENKOU_B_PERIOD, SENKOU_A_SPAN, SENKOU_B_SPAN, DEPTH)
+        
+    plot('tenkan_sen', tenkan[-1]) #conversion
+    plot('kijun_sen', kijun[-1]) #base
+    plot('senkou_span_A', senkou_A[-1])
+    plot('senkou_span_B', senkou_B[-1])
+    plot('bull_cloud', bull_cloud[-1])
+    plot('bear_cloud', bear_cloud[-1])
+    plot('market', market[-1], secondary=True)
+    if info.tick == 0: plot('z', -10, secondary=True)
+    
+    
+    holding_assets = storage.holding_assets
+    holding_currency = storage.holding_currency
+
+    close = data[PAIR].price
+    
+    if holding_currency:
+        if ((close > senkou_B[-1]) and 
+            (senkou_A[-1] > senkou_B[-1]) and 
+            (close > kijun[-1])):
+                buy(PAIR)
+                
+    if holding_assets:        
+        if ((close < senkou_B[-1]) and 
+            (senkou_A[-1] < senkou_B[-1]) and 
+            (close < kijun[-1])):
+                sell(PAIR)
+            
+    
+
+ 
