@@ -1,0 +1,47 @@
+PAIR = info.primary_pair
+
+COP_1   = 14  
+COP_2   = 11
+COP_3   = 10
+
+import talib
+
+
+def Coppock(cop_1, cop_2, cop_3):
+
+    array_len = min(sum([COP_1,COP_2,COP_3]),250)
+    
+    C    = data[PAIR].period(array_len, 'close')
+    ROC1 = talib.ROC(C, timeperiod=COP_1)
+    ROC2 = talib.ROC(C, timeperiod=COP_2)
+    ROC  = ROC1 + ROC2
+    
+    return talib.MA(ROC, timeperiod=COP_3, matype=2)
+
+def tick():
+
+    coppock = Coppock(COP_1, COP_1, COP_3)
+    
+    plot('COPPOCK', coppock[-1], secondary=True)
+    plot('0', 0, secondary=True)
+    
+    
+    
+    ma_coppock = talib.MA(coppock, timeperiod=20)
+    
+    plot('ma_coppock', ma_coppock[-1], secondary=True)
+    
+    std_coppock = talib.STDDEV(coppock, 20)
+    upper_bb_coppock = ma_coppock + (2*std_coppock)
+    lower_bb_coppock = ma_coppock - (2*std_coppock)
+    
+    plot('upper_bb', upper_bb_coppock[-1], secondary=True)
+    plot('lower_bb', lower_bb_coppock[-1], secondary=True)
+    
+    if info.tick == 0:
+        plot('600', 600)
+        plot('F', -100, secondary=True)
+    
+
+    
+    
