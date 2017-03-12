@@ -1,0 +1,72 @@
+
+THRESHOLD = 0.005 # buy and sell threshold
+INTERVAL = 43200 # candle size (in seconds)
+SHORT = 3 # short moving average period 
+LONG = 30 # long moving average period
+
+def initialize():
+    
+    storage.invested = storage.get('invested', False)
+
+
+def tick():
+    
+    portfolio.update()
+    
+    
+    
+    my_bitcoin = portfolio.btc
+    
+    my_usd = portfolio.usd
+    
+    log('my_bitcoin')
+    
+    log(my_bitcoin)
+    
+    log('my_usd')
+    
+    log(my_usd)
+    
+    log(data.btc_usd.price)
+    # Calculate a short-term moving average.
+    short_term = data(interval=INTERVAL).btc_usd.ma(SHORT)
+    
+    # Long-term moving average. It's smoother than short-term MA but takes
+    # longer to show trends.
+    long_term = data(interval=INTERVAL).btc_usd.ma(LONG)
+    
+    # Calculate a percentage difference between the two lines
+    diff = 100 * (short_term - long_term) / ((short_term + long_term) / 2)
+    # If the difference is positive (i.e. the short-term line has crossed
+    # above the long-term line) and it meets our threshold criteria, and
+    # we are not already holding BTC, place a buy order to purchase as
+    # much BTC as we can, given how much USD is in our current portfolio.
+    if diff >= THRESHOLD and not storage.invested:
+        buy(pairs.btc_usd)
+        storage.invested = True
+    
+    # Otherwise, if we're holding BTC and the short-term line crosses below
+    # the long-term line (at a percentage greater than our threshold) then
+    # sell all of our BTC holdings.
+    elif diff <= -THRESHOLD and storage.invested:
+        sell(pairs.btc_usd)
+        storage.invested = False
+        
+    # Plot our moving averages to the chart
+    plot('short_term', short_term) # You can use any string to label the line
+    plot('long_term', long_term)
+    
+    try:
+        order = buy(pairs.btc_usd, 0.05, data.btc_usd.price-8, 25000)
+        
+        order = sell(pairs.btc_usd, 0.02, data.btc_usd.price+8, 25000)
+        
+        log(order.filled)
+        
+    except TradewaveFundsError, e:
+        log('Not enough funds!')
+    except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+        log('Unable to place buy order: %s' % e.message)
+        
+        log(order)
+        
