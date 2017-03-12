@@ -1,0 +1,9 @@
+import random
+
+
+def tick():
+
+    log(data.btc_usd.price)
+
+    #plot('buy', random.random()*float(data.btc_usd.price))
+    plot('sell', random.random()*float(data.btc_usd.price))
