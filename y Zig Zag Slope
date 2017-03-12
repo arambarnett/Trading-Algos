@@ -1,0 +1,59 @@
+import talib
+
+def initialize():
+    
+    storage.Z       = 0
+    storage.Zh      = 0
+    storage.Zl      = 0
+    storage.SLOPE   = 0
+    storage.SLOPEh  = 0
+    storage.SLOPEl  = 0
+
+def tick():
+    
+    PAIR            = data.btc_usd  # PRIMARY TRADING PAIR
+    T               = 60            # PERIOD (10 to 40, default 30)
+    W               = 0.2          # CHANNEL WIDTH
+
+    
+    vwap            = PAIR.vwap(2)
+    H               = Decimal(PAIR.warmup_period('high')[-1])
+    L               = Decimal(PAIR.warmup_period('low')[-1]) 
+    C               = PAIR.warmup_period('close') 
+    
+    SLOPE           = talib.LINEARREG_SLOPE(C, timeperiod=T)[-1]
+    STDDEV          = talib.STDDEV(C, timeperiod=T)[-1]
+    Z               = W*STDDEV/100
+    
+
+    if storage.Z > Decimal(1+Z)*vwap:
+        storage.SLOPE = SLOPE        
+        storage.Z = vwap
+    elif Decimal(1+Z)*storage.Z < vwap:
+        storage.SLOPE = SLOPE         
+        storage.Z = vwap
+       
+    if H > storage.Zh:
+        storage.SLOPEh = SLOPE         
+        storage.Zh = H
+    if storage.Zh > Decimal(1+2*Z)*H:
+        storage.SLOPEh = SLOPE         
+        storage.Zh = Decimal(1+Z)*H    
+        
+    if L < storage.Zl:
+        storage.SLOPEl = SLOPE         
+        storage.Zl = L
+    elif Decimal(1+2*Z)*storage.Zl < L:
+        storage.SLOPEl = SLOPE        
+        storage.Zl = Decimal(1-Z)*L   
+        
+    storage.Z = storage.Z + Decimal(storage.SLOPE)
+    storage.Zl = storage.Zl + Decimal(storage.SLOPEl)
+    storage.Zh = storage.Zh + Decimal(storage.SLOPEh)
+
+    plot('VWAP',vwap)        
+    plot('Z', storage.Z)
+    plot('Zh', storage.Zh)
+    plot('Zl', storage.Zl)
+    #plot('SLOPE', SLOPE, secondary=True)
+    #plot('STDDEV', 10*Z, secondary=True)
