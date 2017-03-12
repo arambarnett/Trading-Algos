@@ -1,0 +1,82 @@
+"litepresence smooth, ported to NumPy by lewk"
+
+import talib
+import math
+import numpy as np
+
+from datetime import datetime
+from collections import defaultdict, deque
+
+
+# Period, Aggregation, Instrument, Data Array
+period          = 10
+IN              = 3600
+instrument      = pairs.btc_usd
+
+A = int(math.ceil(IN/info.interval))
+
+
+def initialize():
+    storage.start = datetime.utcnow()
+    storage.raw = defaultdict(lambda: np.array([]))
+    storage.smoothed = defaultdict(lambda: np.array([]))
+
+
+def stop():
+    end = datetime.utcnow()
+    log('Ran for %s' % (end - storage.start))
+
+
+def smooth(label, indicator, aggregation):
+    raw = storage.raw
+    smoothed = storage.smoothed
+    raw[label] = np.append(raw[label], indicator[-1])[-A:]
+    avg = np.average(raw[label])
+    smoothed[label] = np.append(smoothed[label], avg)[-A:]
+    return smoothed[label]
+
+
+def tick():
+    
+    # Initialize with previous candles
+    if info.tick == 0:
+        for i in xrange(A):
+            idx = A * -1 + i
+            C = data(interval=IN)[instrument][idx].warmup_period('close')
+            calc_ma(C)
+        
+    C = data(interval=IN)[instrument].warmup_period('close')
+    
+    MA1_now, MA1_now_S, MA2_now, MA2_now_S, MA3_now, MA3_now_S, MA4_now, MA4_now_S = calc_ma(C)
+ 
+    plot('MA1', MA1_now)
+    plot('MA2', MA2_now)  
+    plot('MA3', MA3_now)
+    plot('MA4', MA4_now)      
+
+    plot('MA1_S', MA1_now_S)
+    plot('MA2_S', MA2_now_S)    
+    plot('MA3_S', MA3_now_S)
+    plot('MA4_S', MA4_now_S)
+
+
+def calc_ma(C):
+    # Aggregated "Wiggly" TA-lib Arrays
+    MA1 = talib.MA(C, timeperiod=1*period, matype=0)  
+    MA2 = talib.MA(C, timeperiod=2*period, matype=0)  
+    MA3 = talib.MA(C, timeperiod=3*period, matype=0)  
+    MA4 = talib.MA(C, timeperiod=4*period, matype=0)
+    
+    # Aggregated "Wiggly" TA-lib Indicators
+    MA1_now = MA1[-1]
+    MA2_now = MA2[-1]
+    MA3_now = MA3[-1]
+    MA4_now = MA4[-1]   
+    
+    # Smoothed Aggregated TA-lib Indicators            
+    MA1_now_S  = smooth('MA1', MA1, IN)[-1]
+    MA2_now_S  = smooth('MA2', MA2, IN)[-1]
+    MA3_now_S  = smooth('MA3', MA3, IN)[-1]
+    MA4_now_S  = smooth('MA4', MA4, IN)[-1]   
+    
+    return MA1_now, MA1_now_S, MA2_now, MA2_now_S, MA3_now, MA3_now_S, MA4_now, MA4_now_S 
