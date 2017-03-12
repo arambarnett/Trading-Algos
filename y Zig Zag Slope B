@@ -1,0 +1,67 @@
+import talib
+
+def initialize():
+    
+    storage.Z       = 0
+    storage.Zh      = 0
+    storage.Zl      = 0
+    storage.Zh2     = 0
+    storage.Zl2     = 0
+    storage.SLOPE   = 0    
+   
+
+def tick():
+    
+    PAIR            = data.btc_usd  # PRIMARY TRADING PAIR
+    T               = 120            # PERIOD (10 to 40, default 30)
+    W               = 0.2           # CHANNEL SENSITIVITY
+
+    
+    vwap            = PAIR.vwap(5)
+    H               = Decimal(PAIR.warmup_period('high')[-1])
+    L               = Decimal(PAIR.warmup_period('low')[-1]) 
+    C               = PAIR.warmup_period('close') 
+    
+    SLOPE           = talib.LINEARREG_SLOPE(C, timeperiod=T)[-1]
+    STDDEV          = talib.STDDEV(C, timeperiod=T)[-1]
+    Z               = W*STDDEV/100
+    
+    if info.tick == 0: 
+        storage.Z        = vwap
+        storage.Zh       = vwap + Decimal(STDDEV)
+        storage.Zl       = vwap - Decimal(STDDEV)
+        storage.Zh2      = vwap + Decimal(2*STDDEV)
+        storage.Zl2      = vwap - Decimal(2*STDDEV)    
+
+
+    if storage.Z > Decimal(1+Z)*vwap:
+        storage.SLOPE   = SLOPE        
+        storage.Z       = vwap
+        storage.Zh      = Decimal(storage.Z) + Decimal(STDDEV)
+        storage.Zl      = Decimal(storage.Z) - Decimal(STDDEV)
+        storage.Zh2     = Decimal(storage.Z) + Decimal(2*STDDEV)
+        storage.Zl2     = Decimal(storage.Z) - Decimal(2*STDDEV)        
+    elif Decimal(1+Z)*storage.Z < vwap:
+        storage.SLOPE   = SLOPE         
+        storage.Z       = vwap
+        storage.Zh      = Decimal(storage.Z) + Decimal(STDDEV)
+        storage.Zl      = Decimal(storage.Z) - Decimal(STDDEV) 
+        storage.Zh2     = Decimal(storage.Z) + Decimal(2*STDDEV)
+        storage.Zl2     = Decimal(storage.Z) - Decimal(2*STDDEV)         
+
+    storage.Z       = storage.Z + Decimal(storage.SLOPE)
+    storage.Zl      = storage.Zl + Decimal(storage.SLOPE)
+    storage.Zh      = storage.Zh + Decimal(storage.SLOPE)
+    
+    ''' comment these two lines for trend neutral slope on 2nd STDDEV '''  
+    storage.Zl2     = storage.Zl2 + Decimal(storage.SLOPE)
+    storage.Zh2     = storage.Zh2 + Decimal(storage.SLOPE)  
+
+    plot('VWAP',vwap)        
+    plot('Z', storage.Z)
+    plot('Zh', storage.Zh)
+    plot('Zl', storage.Zl)
+    plot('Zh2', storage.Zh2)
+    plot('Zl2', storage.Zl2)    
+    #plot('SLOPE', SLOPE, secondary=True)
+    #plot('STDDEV', 10*Z, secondary=True)
