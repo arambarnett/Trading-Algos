@@ -1,0 +1,147 @@
+#Bitcoin Price Composite:
+
+def initialize():
+    storage.ticker = {}
+
+def update_external_data():
+    
+    storage.ticker['btce'] ={}
+    try:
+        storage.ticker['btce']  = fetch_btce_ticker()
+    except TradewaveHTTPError, e:
+        log('Problem fetching btce ticker: %s' % e)
+    except Exception, e: log('error: %s' % e)
+    except: pass
+
+    storage.ticker['stamp'] ={}
+    try:
+        storage.ticker['stamp']  = fetch_stamp_ticker()
+    except TradewaveHTTPError, e:
+        log('Problem fetching stamp ticker: %s' % e)
+    except Exception, e: log('error: %s' % e)
+    except: pass
+
+    storage.ticker['finex'] ={}
+    try:
+        storage.ticker['finex']  = fetch_finex_ticker()
+    except TradewaveHTTPError, e:
+        log('Problem fetching finex ticker: %s' % e)
+    except Exception, e: log('error: %s' % e)
+    except: pass
+
+    storage.ticker['huobi'] ={}
+    try:
+        storage.ticker['huobi']  = fetch_huobi_ticker()
+    except TradewaveHTTPError, e:
+        log('Problem fetching huobi ticker: %s' % e)
+    except Exception, e: log('error: %s' % e)
+    except: pass
+
+    storage.ticker['okcoin'] ={}
+    try:
+        storage.ticker['okcoin']  = fetch_okcoin_ticker()
+    except TradewaveHTTPError, e:
+        log('Problem fetching okcoin ticker: %s' % e)
+    except Exception, e: log('error: %s' % e)
+    except: pass
+
+    storage.ticker['kraken'] ={}
+    try:
+        storage.ticker['kraken']  = fetch_kraken_ticker()
+    except TradewaveHTTPError, e:
+        log('Problem fetching kraken ticker: %s' % e)
+    except Exception, e: log('error: %s' % e)
+    except: pass
+
+    storage.usdEUR = storage.get('usdEUR', 0.9)
+    storage.usdCNY = storage.get('usdCNY', 6.5)    
+    
+    try:
+        forex = get_json('http://api.fixer.io/latest?base=USD&symbols=EUR,CNY')
+        storage.usdEUR = float(forex['rates']['EUR'])
+        storage.usdCNY = float(forex['rates']['CNY'])
+    except: 
+        log('FOREX update failed; using last known rates'); pass
+
+def fetch_stamp_ticker():
+
+    api = 'https://www.bitstamp.net/api/ticker/'
+    obj = get_json(api)
+    #log(str(obj))
+    last = obj['last']
+    #log('last stamp: %s USD' % last)
+    return float(last)
+
+def fetch_btce_ticker():
+    
+    api = ('https://btc-e.com/api/2/btc_usd/ticker')
+    obj = get_json(api)['ticker']
+    #log(str(obj))
+    last = obj['last']
+    #log('last btce: %s USD' % last)
+    return float(last)
+    
+def fetch_finex_ticker():
+    
+    api = "https://api.bitfinex.com/v1/pubticker/BTCUSD"
+    obj = get_json(api)
+    #log(str(obj))
+    last = obj['last_price']
+    #log('last bitfinex: %s USD' % last)  
+    return float(last)
+    
+def fetch_huobi_ticker():
+    
+    api = 'http://api.huobi.com/staticmarket/ticker_btc_json.js'
+    obj = get_json(api)['ticker']
+    #log(str(obj))
+    last = obj['last']
+    #log('last huobi: %s CNY' % last)  
+    return float(last)
+    
+def fetch_okcoin_ticker():
+    
+    api = 'https://www.okcoin.cn/api/v1/ticker.do?symbol=btc_cny'
+    obj = get_json(api)['ticker']
+    #log(str(obj))
+    last = obj['last']
+    #log('last okcoin: %s CNY' % last)   
+    return float(last)
+    
+def fetch_kraken_ticker():
+    api = 'https://api.kraken.com/0/public/Ticker?pair=BTCEUR'
+    obj = get_json(api)['result']['XXBTZEUR']
+    #log((str(obj))[-500:-250])
+    #log((str(obj))[-250:])    
+    last = obj['c'][0]
+    #log('last kraken: %s EUR' % last)   
+    return float(last)
+
+def tick():
+    
+    composite = (
+        storage.ticker['stamp'] +
+        storage.ticker['btce'] +
+        storage.ticker['finex'] +
+        (storage.ticker['huobi'] / storage.usdCNY) +
+        #(storage.ticker['okcoin'] / storage.usdCNY) 
+        (storage.ticker['kraken'] / storage.usdEUR)
+        ) / 5    
+
+    if info.tick == 0:
+        log('BITCOIN ******************')
+        log('last stamp...: %s USD' % storage.ticker['stamp'])
+        log('last btce....: %s USD' % storage.ticker['btce'])
+        log('last finex...: %s USD' % storage.ticker['finex'])
+        log('last huobi...: %s CNY' % storage.ticker['huobi'])
+        log('last okcoin..: %s CNY' % storage.ticker['okcoin'])
+        #log('last kraken..: %s EUR' % storage.ticker['kraken'])   
+        log('FOREX ********************')
+        log('USDEUR.......: %.5f' % storage.usdEUR)
+        log('USDCNY.......: %.5f' % storage.usdCNY)
+        log('COMPOSITE ****************')
+        log('BTCUSD.......: %.2f' % composite)
+        
+
+        
+    
