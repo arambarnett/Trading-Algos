@@ -1,0 +1,304 @@
+def banner():
+    # PORTFOLIO MANAGEMENT BTC-LTC-USD ##############################
+    # PORTFOLIO MANAGEMENT BTC-LTC-USD ##############################
+    # PORTFOLIO MANAGEMENT BTC-LTC-USD ##############################
+    
+    '''
+    Trois Framework v2.0 - An untuned plugin for trading 3 currencies
+
+    BTCUSD >>> LTCUSD >>> LTCBTC
+
+    crypto long, moar coinz short!
+
+    litepresence
+
+    rpfpresence@gmail.com
+
+    BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME
+    '''
+
+    # PORTFOLIO MANAGEMENT BTC-LTC-USD ##############################
+
+PAIR1 = pairs.btc_usd
+PAIR2 = pairs.ltc_usd
+PAIR3 = pairs.ltc_btc
+
+SHORT1 = 10
+LONG1 = 90
+
+SHORT2 = 10
+LONG2 = 90
+
+SHORT3 = 10
+LONG3 = 90
+
+CANDLE = 7200
+
+
+def part_1_banner():
+    '''
+    ***********************************************************
+    PART 1 - Thresholds, Indicators, and Primary Logic
+    ***********************************************************
+
+    In this PART you can mix and match indicators
+    Choose the best indicator for each of the three currency pairs
+    Use this PART to generate 6 keys:
+
+    storage.btcusdBUY        : buy(pairs.btc_usd)
+    storage.btcusdSELL       : sell(pairs.btc_usd)
+
+    storage.ltcusdBUY        : buy(pairs.ltc_usd)
+    storage.ltcusdSELL       : sell(pairs.ltc_usd)
+
+    storage.ltcbtcBUY        : buy(pairs.ltc_btc)
+    storage.ltcbtcSELL       : sell(pairs.ltc_btc)
+    '''
+
+    # THIS SECTION IS EXAMPLE CODE REPEATED 3 TIMES HERE:
+    # "a simple moving average cross over"
+    # INSTALL 3 COPIES OF YOUR CODE  (or definitions called here)
+    # IN THE BASIC FORMAT BELOW 
+    # (you could trade each pair with different logic):
+
+
+def reset_keys():
+
+    storage.btcusdBUY = 0
+    storage.btcusdSELL = 0
+    storage.ltcusdBUY = 0
+    storage.ltcusdSELL = 0
+    storage.ltcbtcBUY = 0
+    storage.ltcbtcSELL = 0
+
+
+def trade_btcusd():
+
+    storage.btc_usd_long = data(interval=CANDLE)[PAIR1].ma(LONG1)
+    storage.btc_usd_short = data(interval=CANDLE)[PAIR1].ma(SHORT1)
+
+    if storage.btc_usd_short > storage.btc_usd_long:
+        storage.btcusdBUY = 1  # buy(pairs.btc_usd)
+    else:
+        storage.btcusdSELL = 1  # sell(pairs.btc_usd)
+
+
+def trade_ltcusd():
+    storage.ltc_usd_long = data(interval=CANDLE)[PAIR2].ma(LONG2)
+    storage.ltc_usd_short = data(interval=CANDLE)[PAIR2].ma(SHORT2)
+
+    if storage.ltc_usd_short > storage.ltc_usd_long:
+        storage.ltcusdBUY = 1  # buy(pairs.ltc_usd)
+    else:
+        storage.ltcusdSELL = 1  # sell(pairs.ltc_usd)
+
+
+def trade_ltcbtc():
+    storage.ltc_btc_long = data(interval=CANDLE)[PAIR3].ma(LONG3)
+    storage.ltc_btc_short = data(interval=CANDLE)[PAIR3].ma(SHORT3)
+
+    if storage.ltc_btc_short > storage.ltc_btc_long:
+        storage.ltcbtcBUY = 1  # buy(pairs.ltc_btc)
+    else:
+        storage.ltcbtcSELL = 1  # sell(pairs.ltc_btc)
+
+
+def chart():
+
+    plot('btc_usd_long', storage.btc_usd_long)
+    plot('btc_usd_short', storage.btc_usd_short)
+
+    plot('ltc_usd', data(interval=CANDLE)[PAIR2].close, secondary=True)
+    plot('ltc_usd_long', storage.ltc_usd_long, secondary=True)
+    plot('ltc_usd_short', storage.ltc_usd_short, secondary=True)
+
+    plot('ltc_btc', 1000 * data(interval=CANDLE)[PAIR3].close, secondary=True)
+    plot('ltc_btc_long', 1000 * storage.ltc_btc_long, secondary=True)
+    plot('ltc_btc_short', 1000 * storage.ltc_btc_short, secondary=True)
+
+
+    # ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^#
+    #
+    # INSTALL 3 COPIES OF YOUR CODE ABOVE THIS LINE IN THE FORMAT ABOVE #
+    #
+    
+    
+def part_2_banner():
+    '''
+    ***********************************************************
+    PART 2 - Combine trade signals from 3 currencies
+    ***********************************************************
+    '''
+    # EVERYTHING FROM HERE DOWN WILL MANAGE YOUR LTC/BTC/USD PORTFOLIO
+
+    '''
+    ***********************************************************
+    Trois Framework Magic
+    ***********************************************************
+
+    Define Best storage.postion Based on Primary Indicator Logic Keys
+
+    Additional possibilities exist beyond the 9 shown, ie:
+
+    if storage.ltcbtcSELL:
+        if (storage.btcusdBUY + storage.ltcbtcBUY + storage.btcusdSELL +
+            storage.ltcusdSELL + storage.ltcusdBUY + storage.btcusdBUY) == 0:
+                log('*** BTC ***')
+                storage.postion = 'BTC'
+
+    There are a multitude of possible binary permutations,
+    moreso if you assign integer values to each key.
+    However, >95% of decisions will be controlled by the 9 below:
+    '''
+
+
+def trois():
+
+    # Reset and Check Current Porfolio Holdings
+    storage.holding_BTC = 0
+    storage.holding_LTC = 0
+    storage.holding_USD = 0
+    if portfolio.btc > 0.11:
+        storage.holding_BTC = 1
+    if portfolio.ltc > 0.11:
+        storage.holding_LTC = 1
+    if portfolio.usd > Decimal(0.125) * data.ltc_usd.high:
+        storage.holding_USD = 1
+    if portfolio.usd > Decimal(0.125) * data.btc_usd.high:
+        storage.holding_USD = 2
+
+    # Log Holdings and Current Prices
+
+    if 0:  # on/off
+
+        log('BTC holdings: %s %s' %
+            (round(100 * portfolio.btc) / 100, storage.holding_BTC))
+        log('LTC holdings: %s %s' %
+            (round(100 * portfolio.ltc) / 100, storage.holding_LTC))
+        log('USD holdings: %s %s' %
+            (round(100 * portfolio.usd) / 100, storage.holding_USD))
+        log('BTC price...: %s' % (round(100 * data.btc_usd.close) / 100))
+        log('LTC price...: %s' % (round(100 * data.ltc_usd.close) / 100))
+        log('LTCBTC ratio: %s' % (round(10000 * data.ltc_btc.close) / 10000))
+
+    # Log Primary Indicator Logical Keys
+    if 0:  # on/off
+
+        log('**************************')
+        if storage.btcusdBUY:
+            log('BTC > USD')
+        if storage.ltcbtcSELL:
+            log('BTC > LTC')
+        if storage.ltcusdBUY:
+            log('LTC > USD')
+        if storage.ltcbtcBUY:
+            log('LTC > BTC')
+        if storage.btcusdSELL:
+            log('USD > BTC')
+        if storage.ltcusdSELL:
+            log('USD > LTC')
+        if (storage.btcusdBUY + storage.ltcbtcSELL + storage.ltcusdBUY + 
+            storage.ltcbtcBUY + storage.btcusdSELL + storage.ltcusdSELL) == 0:
+                log('NO ACTION - HOLD')
+
+    # Reset storage.postion
+    storage.postion = None
+
+    # Reasons to Buy BTC
+    if storage.ltcbtcSELL and storage.btcusdBUY:
+        if (storage.ltcbtcBUY + storage.btcusdSELL) == 0:
+            # log('*** BTC1 ***')
+            storage.postion = 'BTC'
+
+    if storage.ltcbtcSELL and storage.ltcusdBUY:
+        if (storage.ltcbtcBUY + storage.btcusdSELL) == 0:
+            # log('*** BTC2 ***')
+            storage.postion = 'BTC'
+
+    if storage.btcusdBUY and storage.ltcusdSELL:
+        if (storage.ltcbtcBUY + storage.btcusdSELL) == 0:
+            # log('*** BTC3 ***')
+            storage.postion = 'BTC'
+
+    # Reasons to Buy LTC
+    if storage.ltcusdBUY and storage.ltcbtcBUY:
+        if (storage.ltcusdSELL + storage.ltcbtcSELL) == 0:
+            # log('*** LTC1 ***')
+            storage.postion = 'LTC'
+
+    if storage.ltcbtcBUY and storage.btcusdBUY:
+        if (storage.ltcusdSELL + storage.ltcbtcSELL) == 0:
+            # log('*** LTC2 ***')
+            storage.postion = 'LTC'
+
+    if storage.ltcusdBUY and storage.btcusdSELL:
+        if (storage.ltcusdSELL + storage.ltcbtcSELL) == 0:
+            # log('*** LTC3 ***')
+            storage.postion = 'LTC'
+
+    # Reasons to Buy USD
+    if storage.ltcusdSELL and storage.btcusdSELL:
+        if (storage.ltcusdBUY + storage.btcusdBUY) == 0:
+            # log('*** USD1 ***')
+            storage.postion = 'USD'
+
+    if storage.btcusdSELL and storage.ltcbtcSELL:
+        if (storage.ltcusdBUY + storage.btcusdBUY) == 0:
+            # log('*** USD2 ***')
+            storage.postion = 'USD'
+
+    if storage.ltcusdSELL and storage.ltcbtcBUY:
+        if (storage.ltcusdBUY + storage.btcusdBUY) == 0:
+            # log('*** USD3 ***')
+            storage.postion = 'USD'
+
+
+def trade():
+    '''
+    ***********************************************************
+    BUY / SELL / HOLD
+    ***********************************************************
+
+    Act on Preferred storage.postion
+    Use this PART for order placement logic, ie ICEBERG ORDERS
+
+    Here show simple market orders:
+    '''
+
+    # Note coefficients added long ma's to plot trades
+
+    if storage.postion == 'BTC':
+        if storage.holding_LTC:
+            sell(pairs.ltc_btc)
+            plot('ltc_btc_long', 1000 * Decimal(0.8)
+                 * storage.ltc_btc_long, secondary=True)
+        if storage.holding_USD == 2:
+            buy(pairs.btc_usd)
+
+    if storage.postion == 'LTC':
+        if storage.holding_BTC:
+            buy(pairs.ltc_btc)
+            plot('ltc_btc_long', 1000 * Decimal(1.2)
+                 * storage.ltc_btc_long, secondary=True)
+        if storage.holding_USD:
+            buy(pairs.ltc_usd)
+            plot('ltc_usd_long', Decimal(1.2) *
+                 storage.ltc_usd_long, secondary=True)
+
+    if storage.postion == 'USD':
+        if storage.holding_BTC:
+            sell(pairs.btc_usd)
+        if storage.holding_LTC:
+            sell(pairs.ltc_usd)
+            plot('ltc_usd_long', Decimal(0.8) *
+                 storage.ltc_usd_long, secondary=True)
+
+
+def tick():
+    reset_keys()
+    trade_btcusd()
+    trade_ltcusd()
+    trade_ltcbtc()
+    chart()
+    trois()
+    trade()
