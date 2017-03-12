@@ -1,0 +1,457 @@
+# Bollinger Bands Mean Reversion v3.05
+
+''' THE CALL OF CHTULHU '''
+
+# litepresence March 2015
+
+# Channeled and Trending Logic
+# Rolling Max Drawdown, Fees, ROI, Trade Frequency
+# Compatible with various intervals and all currency pairs
+
+''' BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME '''
+
+######################################################
+######################################################
+#     Sail with Caution:  Chtulu Will Eat You!       #
+######################################################
+######################################################
+DEPTH           = 2     # int min 2 - Array sizes
+MA_PERIOD       = 35    # int min 2 
+STD_PERIOD      = 35    # int min 2
+THRESHOLD_1     = 20.00 # Differential Threshold
+THRESHOLD_2     = 1.000 # Buy Channel
+THRESHOLD_3     = 1.000 # Sell Channel
+THRESHOLD_4     = 1.000 # Buy Breakout
+THRESHOLD_5     = 1.000 # Sell Breakout
+THRESHOLD_6     = 1.000 # Buy Bottom
+THRESHOLD_7     = 1.000 # Sell Top
+THRESHOLD_8     = 2.000 # Standard Deviation Upper
+THRESHOLD_9     = 2.000 # Standard Deviation Lower
+MIN_WIDTH       = False # Channel Width Lookback
+MAX_DRAW        = False # Computationally Taxing
+INTERVAL        = 3600  # Aggregated Candle Size
+LOG_ARRAYS      = True  # Debug Arrays on 1st Tick
+SMOOTHING       = 1    # if > 1: EMA period; else close
+######################################################
+######################################################
+#          http://i.imgur.com/luBf4CL.jpg            #
+######################################################
+######################################################
+
+import time 
+
+def initialize():
+
+    storage.hold = storage.get('hold', False)
+    storage.trades = storage.get('trades', 0)
+    storage.order_fee = storage.get('order_fee', 0)
+    
+def instruments():
+
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    if pair == pairs.btc_cny:
+        pair = 'btccny'
+    if pair == pairs.ltc_cny:
+        pair = 'ltccny'
+    currency_code = ''.join(list((pair)[3:6]))
+    asset_code = ''.join(list((pair)[0:3]))
+    storage.currency = portfolio[currencies[currency_code]]
+    storage.assets = portfolio[currencies[asset_code]]
+    storage.currency_CODE = (currency_code).upper()
+    storage.asset_CODE = (asset_code).upper()
+    return    
+    
+def holdings():
+    
+    if info.tick == 0: 
+        storage.start_price = data[info.primary_pair].price    
+    storage.mean_price = data[storage.instrument].vwap(2)
+    storage.potential_currency = storage.currency + \
+        (storage.assets * storage.mean_price)
+    storage.potential_assets = storage.assets + \
+        (storage.currency / storage.mean_price)
+    if info.tick == 0: 
+        storage.start_assets = storage.potential_assets
+        storage.start_currency = storage.potential_currency
+    storage.percent_invested = 100 * storage.assets / storage.potential_assets
+    storage.ROI_currency = (
+        100 * storage.potential_currency / storage.start_currency) - 100
+    storage.ROI_assets = (
+        100 * storage.potential_assets / storage.start_assets) - 100
+    storage.trading_days = Decimal(
+        info.interval) * Decimal(info.tick) / Decimal(86400)
+    storage.trading_frequency = storage.trading_days / \
+        (storage.trades + Decimal(0.00000001))
+    if storage.trading_frequency > 10000:
+        storage.trading_frequency = 0
+    storage.holding_assets = False
+    storage.holding_currency = False
+    if storage.currency > Decimal(0.15) * storage.mean_price:
+        storage.holding_currency = True
+    if storage.assets > 0.15:
+        storage.holding_assets = True    
+
+def account_balances():
+
+
+    log('Trades: %s Day: %.1f Freq: %.1f Price: %.2f' % (
+        int(storage.trades), storage.trading_days,
+        storage.trading_frequency, storage.mean_price))
+    log('%s: %.1f / %.1f / %.1f %.1f ROI' % (storage.currency_CODE,
+        storage.start_currency, storage.currency, storage.potential_currency,
+        storage.ROI_currency))
+    log('%s: %.1f / %.1f / %.1f %.1f ROI' % (storage.asset_CODE,
+        storage.start_assets, storage.assets, storage.potential_assets,
+        storage.ROI_assets))
+    log('**********************************************************')        
+    log("*** Ph`nglui mglw`nafh Cthulhu R`lyeh wgah`nagl fhtagn ***")        
+    log('**********************************************************')
+
+
+def indicators():       
+
+    # build fresh arrays on each tick
+    ma = []
+    std = []
+    upper = []
+    lower = []
+    width = []
+    price = []
+    for n in range(DEPTH):
+        ma.append(0)        
+        std.append(0)
+        price.append(0)
+        upper.append(0)
+        lower.append(0)
+        width.append(0)
+    for n in range(DEPTH):
+        ma[-n] = (data(interval=INTERVAL
+            )[info.primary_pair][-n].ma(MA_PERIOD))        
+        std[-n] = (data(interval=INTERVAL
+            )[info.primary_pair][-n].std(STD_PERIOD))
+        if SMOOTHING > 1:
+            price[-n] = float(data(interval=INTERVAL
+                )[info.primary_pair][-n].ema(SMOOTHING))    
+        else:    
+            price[-n] = (float(data(interval=INTERVAL
+                )[info.primary_pair][-n].close))
+    for n in range(DEPTH):
+        upper[-n] = (ma[-n] + (Decimal(THRESHOLD_8) * std[-n]))
+        lower[-n] = (ma[-n] - (Decimal(THRESHOLD_9) * std[-n]))
+    for n in range(DEPTH):    
+        width[-n] = (float(upper[-n] - lower[-n]))        
+
+    if LOG_ARRAYS:
+
+        if info.tick == 0:
+            log('std')
+            for n in range(DEPTH):
+                log('%.2f %s' % (std[-n], -n))
+            log('ma')
+            for n in range(DEPTH):    
+                log('%.2f %s' % (ma[-n], -n))
+            log('upper')
+            for n in range(DEPTH):    
+                log('%.2f %s' % (upper[-n], -n))
+            log('lower')
+            for n in range(DEPTH):    
+                log('%.2f %s' % (lower[-n], -n))
+            log('width')      
+            for n in range(DEPTH):    
+                log('%.2f %s' % (width[-n], -n))
+            log('price')
+            for n in range(DEPTH):    
+                log('%.2f %s' % (price[-n], -n))
+            log('')
+            log('**********************************************************')
+            
+
+    min_width = float(min(upper)-max(lower))
+    
+    if MIN_WIDTH:
+        diff = (width[0] - min_width) / (min_width + 0.000001)        
+    else:
+        diff = (width[0] - width[-1]) / (width[-1] + 0.000001)
+
+    if diff > 1:
+        diff = 1
+    if diff < -1:
+        diff = -1
+        
+    threshold = (float(DEPTH)/float(THRESHOLD_1))        
+        
+    storage.ma = ma
+    storage.std = std
+    storage.upper = upper
+    storage.lower = lower
+    storage.width = width
+    storage.price = price
+    storage.diff = diff
+    storage.threshold = threshold    
+
+    
+def trade():    
+
+    ma = storage.ma 
+    std = storage.std
+    upper = storage.upper
+    lower = storage.lower
+    width = storage.width
+    price = storage.price
+    diff = storage.diff
+    threshold = storage.threshold
+    holding_assets = storage.holding_assets
+    holding_currency = storage.holding_currency
+        
+    # PRICE IS CHANNELED:    
+    
+    # ENTER if price is 2 standard deviations BELOW moving average
+    # EXIT if price is 2 standard deviations ABOVE moving average
+    
+
+
+    if diff < threshold: # CHANNELED
+        
+      if storage.hold == False:    
+        if THRESHOLD_2*price[0] < lower[0]:
+          if holding_currency:
+            log('Deliberate bloodthirstiness and repulsiveness')
+            log('Buy Channel')            
+            order = buy(info.primary_pair)
+            storage.hold = False
+            storage.trades += 1
+            storage.order_fee += (
+                order.fee.to_float() * float(order.price))
+        
+      if storage.hold == False:                 
+        if THRESHOLD_3*price[0] > upper[0]:
+          if holding_assets:
+            log('A grotesque and scaly body with rudimentary wings')            
+            log('Sell Channel')
+            order = sell(info.primary_pair)
+            account_balances()
+            storage.hold = False
+            storage.trades += 1
+            storage.order_fee += order.fee.to_float()
+
+    # PRICE IS TRENDING:
+    
+    # If CHANNEL opens, ENTER and HOLD if price is ABOVE moving average
+    # If CHANNEL opens, EXIT and HOLD if price is BELOW moving average 
+
+    elif diff > threshold: # TRENDING
+
+        if (THRESHOLD_4*price[0] > ma[0]):
+          if holding_currency:
+            log('It lumbered slobberingly into sight; gropingly squeezed')
+            log('Its gelatinous green immensity through the black doorway')            
+            log('Buy Breakout')            
+            order = buy(info.primary_pair)
+            storage.hold = True
+            storage.trades += 1
+            storage.order_fee += (
+                order.fee.to_float() * float(order.price))
+        if (THRESHOLD_5*price[0] < ma[0]):
+          if holding_assets:
+            log('Charlevoix-Kamouraska')
+            log('Sell Breakout')            
+            order = sell(info.primary_pair)
+            account_balances()
+            storage.hold = True
+            storage.trades += 1
+            storage.order_fee += order.fee.to_float()
+            
+
+
+    # TREND IS ENDING:
+    
+    # If HOLDING FIAT trend, ENTER if price is ABOVE moving average
+    # If HOLDING BTC trend, EXIT if price is BELOW moving average    
+
+    elif storage.hold == True: # HOLDING TREND
+    
+        if holding_currency:
+            if THRESHOLD_6*price[0] > ma[0]:
+                log('Dripping with green ooze; sinister with latent horror')
+                log('Buy Bottom')                
+                order = buy(info.primary_pair)
+                storage.hold = False
+                storage.trades += 1
+                storage.order_fee += (
+                    order.fee.to_float() * float(order.price))
+        if holding_assets:
+            if THRESHOLD_7*price[0] < ma[0]: 
+                log('A pulpy, tentacled head')
+                log('Sell Top')                
+                order = sell(info.primary_pair)
+                account_balances()
+                storage.hold = False
+                storage.trades += 1
+                storage.order_fee += order.fee.to_float()
+
+def chart():
+
+    ma = storage.ma 
+    std = storage.std
+    upper = storage.upper
+    lower = storage.lower
+    width = storage.width
+    price = storage.price
+    diff = storage.diff
+    threshold = storage.threshold
+    
+    if info.tick % (3600/info.interval) == 0:
+        plot('MA', ma[0])
+        plot('Upper', upper[0])
+        plot('Lower', lower[0])
+        plot('diff', 100*diff, secondary=True)
+        plot('threshold', 100*threshold, secondary=True)
+        if info.tick == 0:
+            plot('offset', 500, secondary=True)
+        if SMOOTHING > 1:
+            plot('smooth', price[0])
+            
+def tick():
+    
+    if info.tick == 0:
+        log('After vigintillions of years...') 
+        log('Great Cthulhu is loose again!!!')
+        log('')
+
+    
+    if info.interval > INTERVAL:
+        log('Tick Interval must be <= INTERVAL')
+        raise Stop    
+    
+    instruments()
+    holdings()
+    indicators()
+    trade()
+    chart()
+    
+    if MAX_DRAW:
+        dd()              
+            
+
+if MAX_DRAW:
+    import time    
+    ROLLING = 30 # days       
+        
+    def dd():
+    
+        if info.tick == 0:
+            storage.start = time.time()    
+        dd, storage.max_dd = max_dd(0)
+        bnh_dd, storage.max_bnh_dd = bnh_max_dd(0)
+        rolling_dd, storage.max_rolling_dd = max_dd(
+            ROLLING*86400/info.interval)    
+        rolling_bnh_dd, storage.max_rolling_bnh_dd = bnh_max_dd(
+            ROLLING*86400/info.interval)
+        
+        plot('dd', dd, secondary=True)   
+        plot('bnh_dd', bnh_dd, secondary=True)    
+        plot('rolling_dd', rolling_dd, secondary=True)  
+        plot('rolling_bnh_dd', rolling_bnh_dd, secondary=True)       
+        
+        plot('zero', 0, secondary=True)
+        if info.tick == 0:
+            plot('dd_floor', -200, secondary=True)
+    
+    def max_dd(rolling):
+        
+        port_value = float(portfolio.usd+portfolio.btc*data.btc_usd.price)
+        max_value = 'max_value_' + str(rolling)
+        values_since_max = 'values_since_max_' + str(rolling)
+        max_dd = 'max_dd_' + str(rolling)
+        storage[max_value] = storage.get(max_value, [port_value])
+        storage[values_since_max] = storage.get(values_since_max, [port_value])
+        storage[max_dd] = storage.get(max_dd, [0])
+        storage[max_value].append(port_value)    
+        if port_value > max(storage[max_value]):
+            storage[values_since_max] = [port_value]
+        else:
+            storage[values_since_max].append(port_value)
+        storage[max_value] = storage[max_value][-rolling:]
+        storage[values_since_max] = storage[values_since_max][-rolling:]    
+        dd = -100*(max(storage[max_value]) - storage[values_since_max][-1]
+            )/max(storage[max_value])
+        storage[max_dd].append(float(dd))
+        storage[max_dd] = storage[max_dd][-rolling:]
+        max_dd = min(storage[max_dd])
+    
+        return (dd, max_dd)
+      
+    def bnh_max_dd(rolling):
+        
+        coin = data.btc_usd.price
+        bnh_max_value = 'bnh_max_value_' + str(rolling)
+        bnh_values_since_max = 'bnh_values_since_max_' + str(rolling)
+        bnh_max_dd = 'bnh_max_dd_' + str(rolling)    
+        storage[bnh_max_value] = storage.get(bnh_max_value, [coin])
+        storage[bnh_values_since_max] = storage.get(bnh_values_since_max, [coin])
+        storage[bnh_max_dd] = storage.get(bnh_max_dd, [0]) 
+        storage[bnh_max_value].append(coin)
+        if coin > max(storage[bnh_max_value]):
+            storage[bnh_values_since_max] = [coin]        
+        else:
+            storage[bnh_values_since_max].append(coin)
+        storage[bnh_max_value] = storage[bnh_max_value][-rolling:]        
+        storage[bnh_values_since_max] = storage[bnh_values_since_max][-rolling:]  
+        bnh_dd = -100*(max(storage[bnh_max_value]) - storage[bnh_values_since_max][-1]
+            )/max(storage[bnh_max_value])
+        storage[bnh_max_dd].append(float(bnh_dd))
+        storage[bnh_max_dd] = storage[bnh_max_dd][-rolling:]    
+        bnh_max_dd = min(storage[bnh_max_dd])    
+        return (bnh_dd, bnh_max_dd)    
+       
+ 
+def stop():
+    
+    if info.tick > 0:
+
+        if MAX_DRAW:
+            log('ELAPSED TIME: %.1f sec' % (time.time() - storage.start))
+            log('MAX DD......: %.2f pct' % storage.max_dd)
+            log('R MAX DD....: %.2f pct' % storage.max_rolling_dd)
+            log('MAX BNH DD..: %.2f pct' % storage.max_bnh_dd)
+            log('R MAX BNH DD: %.2f pct' % storage.max_rolling_bnh_dd)  
+        
+        start_date = time.strftime(
+            '%Y-%m-%d %H:%M:%S', time.localtime(info.begin))
+        bnh = 100*((data[info.primary_pair].price / storage.start_price)-1) 
+        currency_g = 100*((storage.potential_currency/storage.start_currency)-1)
+        asset_g = 100*((storage.potential_assets/storage.start_assets)-1)
+        
+        log('Start Date...: %s' % start_date)
+        log('Buy and Hold.: %.2f%%' % bnh)
+        log('%s Gain.....: %.2f%%' % (storage.currency_CODE, currency_g))
+        log('%s Gain.....: %.2f%%' % (storage.asset_CODE, asset_g))
+        log('Total Days...: %s' % ((info.interval*info.tick)/86400))
+        log('Total Trades.: %s' % storage.trades)
+        log('Exchange.....: %s' % info.primary_exchange)
+        log('Fee Percent..: %s' %
+            fees[exchanges[str(info.primary_exchange)]][info.primary_pair]) 
+        log('Fee Paid %s : %.2f' % ( 
+            storage.currency_CODE, storage.order_fee))
+        log('Fee Paid %s : [%.2f]' % 
+            (storage.asset_CODE,
+            storage.order_fee/float(data[info.primary_pair].price)))
+        log('**********************************************************')            
+        log('That is not dead which can eternal lie...')
+        log('And with strange aeons even death may die.')   
+        log('In his house at R`lyeh dead...') 
+        log('')
+        log('{{{{ CTHULHU WAITS DREAMING }}}}')
+        log('')    
+        log('**********************************************************')
+
