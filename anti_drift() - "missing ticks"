@@ -1,0 +1,101 @@
+# anti_drift() runs your tick() in your preferred "tick interval" 
+# except on 1m ticks when live to counter "clock drift".
+# more here:
+# https://discuss.tradewave.net/t/lets-discuss-solutions-to-missing-ticks-clock-drift
+
+'''
+litepresence May 2016
+'''
+
+# be sure to consider your usage of:
+# info.tick vs storage.algo_tick
+# info.interval vs INTERVAL
+# backtest in Tick Interval = INTERVAL, run live on 1m. 
+
+import math
+import time
+
+# Global
+BACKTEST = hasattr(info, "end"); LIVE = not BACKTEST
+PAIR = info.primary_pair
+
+# User Input
+INTERVAL = 300 # Your preferred live tick size
+
+def initialize():
+    
+    storage.algo_tick = -1
+
+def anti_drift(): 
+    # Move your tick() function here:
+    
+    # be sure to declare (interval=x) on all data objects accessed
+    plot('ma30', data(interval=INTERVAL)[PAIR].ma(30))
+
+def tick(): # Replace your tick() function with this:
+
+    version = 'anti_drift() v4.033'
+    now = time.time()
+    recent = 180 # depth minutes for percent missing 1m ticks check
+    if storage.algo_tick == -1: # tally of actual algorithm ticks
+        log(version)
+        log('Tick Interval in minutes Algorithm/Tradewave: %s / %s' % 
+            ((INTERVAL/60),(info.interval/60)))
+        storage.start_time = now # initialization time
+        storage.tick_time = now - INTERVAL # time of last algo_tick
+        storage.wave_tick = -1 # tally of actual live tradwave ticks
+        storage.api_fail = False # load 1st email alert   
+        storage.drift = [] # recent list of missing_ticks on each wave_tick
+        for i in range(recent): # fill missing tick list with zeros
+            storage.drift.append(0)
+    if BACKTEST: #advance tick tally and call your original tick()
+        storage.algo_tick += 1 
+        anti_drift()
+    if LIVE:
+        storage.wave_tick += 1
+        elapsed = now-storage.start_time
+        tick_elapsed = now-storage.tick_time
+        should_tick = int(math.floor((elapsed + 30)/ INTERVAL)) #30 seconds leeway
+        unspent_ticks = should_tick-storage.algo_tick
+        # calculate percent missing ticks in 'recent' minutes
+        wave_drift = int((elapsed - storage.wave_tick*info.interval)/60)
+        storage.drift.append(wave_drift)
+        storage.drift = storage.drift[-recent:]
+        missing_ticks = int(100*(storage.drift[-1] - 
+            storage.drift[-recent])/recent) # percent 0 to 100   
+        if missing_ticks <= 3: storage.api_fail = False  # reload email alert  
+        # if I have too many unspent algo ticks, kill bot
+        if unspent_ticks > 10:
+            email('Exchange is Down', subject='Restart Your Bot')
+            raise Stop()
+        # if I have more than one unspent tick, tell me 
+        if unspent_ticks > 1:
+            log('WARNING correcting clock drift: %s unspent_ticks' % 
+                unspent_ticks)
+        # CLOCK WARNING - log and email
+        message = ('%s ALERT! CLOCK DRIFT: %s percent missing 1m ticks in past %s minutes.'
+            % (version, missing_ticks, recent))
+        subject = ('%s WARNING! CLOCK FAILURE @ %s forward to sai@tradewave.net ASAP' 
+            % (version, info.primary_exchange))
+        if missing_ticks >= 15: #15% missing ticks in past "recent" minutes
+            log(message)
+        if (missing_ticks >= 30) and (storage.api_fail == False):
+            storage.api_fail = True
+            log(subject)
+            message += (' Something is wrong with your exchange API connection.' +
+                ' Forward this message to sai@tradewave.net for support.')
+            email(message, subject)      
+        #if I have any unspent ticks and it has been at least half an interval
+        if (unspent_ticks > 0) and (tick_elapsed >= (math.floor(INTERVAL/2))):
+                storage.algo_tick += 1
+                storage.tick_time = now
+                algo_drift = int((elapsed - storage.algo_tick*INTERVAL)/60)
+                log('Minutes of Clock Drift Algorithm/Tradewave:  %s / %s' % 
+                    (algo_drift, wave_drift))
+                anti_drift() # call your original tick() function
+                
+                
+                
+                
+                
+                
