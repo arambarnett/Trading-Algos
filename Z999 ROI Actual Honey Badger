@@ -1,0 +1,493 @@
+'''Honey Badger Enterprise Edition'''
+
+# Hard coded trade times and prices for true/live ROI
+# User reported average price/time early 2015.
+# Average of master and test slave after July 2015.
+# First sell at 349 is when I originally released the script.
+# Max Draw Down in both Buy*Hold and Algorithm terms
+# Rounded average of master and "test slave" for price point
+# Includes all user reports from all exchanges
+# Prices adjusted if users fail to execute 
+
+
+'''
+# NOTE YOU ***MUST*** RUN THIS BACKTEST 
+# ON DEC 10 2014 00:00:00 - TO CURRENT 
+# WITH 1 BTC STARTING BALANCE
+# 4h Candle Size
+'''
+
+
+# or it may "trade" backwards; It only knows date and price:
+# it does not distinguish buys from sells
+# All trades are "Hard Coded" 
+# running on 12h candles will cause corruption if trades are too close
+
+# This is not a "bot" its just an "honest tally" of what really happened
+# The algo has been updated and retuned many times since Dec 2014
+# This tally represents live splines of the various versions.
+# Includes Max Draw Down and ROI
+
+'''
+CURRENT AS OF FEB 23 2017
+%%%%%%%%%%%%%%%%%%%%%%%%%%
+'''
+
+def initialize():
+    storage.reset()
+
+PAIR = info.primary_pair
+
+def tick():
+    
+    
+    storage.trades = storage.get('trades', 0)
+    
+    if info.tick == 0:
+        storage.start_assets = portfolio.btc + portfolio.usd/data[PAIR].price
+        storage.start_currency = portfolio.usd + portfolio.btc*data[PAIR].price
+        storage.start_price = data[PAIR].price
+
+    holding = False
+    if portfolio.btc > 0.1:
+        holding = True
+
+
+                    
+    trade_times = ([
+        # Date/time approximate
+        1418300000,     # 1 349 SELL
+        1418936800,     # 2 312 BUY
+        1419206400,     # 3 322 SELL
+        1421200000,     # 4 205 BUY
+        1422200800,     # 5 249 SELL
+        1423958400,     # 6 255 BUY
+        1424056000,     # 7 230 SELL
+        1424350400,     # 8 239 BUY
+        1427006800,     # 7 267 SELL Z10
+        1427256000,     # 8 247 BUY  Z10                      
+        1427842800,     # 9 242 SELL Z11
+        1429146000,     # 10 225 BUY Z11    
+        1429246000,     # 11 222 SELL Z11
+        1429746000,     # 12 232 BUY Z11  
+        1430040000,     # 13 215 SELL Z11     
+        1430410000,     # 14 235 BUY Z11  
+        1438600000,     # 15 279 SELL Z12
+        #Actual Master UNIX stamp
+        1439940240,     # 16 231 BUY 8/18/15 Z15
+        1440012240,     # 17 226 SELL 8/19/15 Z15
+        1440282240,     # 18 229 BUY 8/22/15 Z15
+        1440336240,     # 19 226 SELL 8/23/15 Z15
+        # Approximate time of flash trading event
+        1441670000,     # Sept 8th 5% flash trade penalty
+        1441690000,     # Sept 8th 5% flash trade penalty
+        # Actual UNIX stamps
+        1443319200,     # Sept 27th HONEY
+        1446289200,     # breakeven halloween "glitch" 
+        1446332400,     # 1 hour later buyback @@ Aproximate stamp (43200)
+        1446624000,     # Nov 4th subclass 1.5 "short the green dragon"
+        1446667200,     # 12 hours later buy back
+        1447516800,     # 11/14 new subclass 1.6
+        1447696800,     # 11/16 buy back under subclass 1.6
+        1447837200,     # 11/18 out subclass 1.6
+        1448000000,     # 11/20 in subclass 1.6
+        1448179200,     # 11/22 8AM final subclass 1.6 before CAPITULATION
+        1448508300,     # 11/25 stoploss assets capitulation reversal 2.3
+        1448612700,     # 11/27 3AM final run of the bulls 2.2
+        1449369120,     # 12/6 1.1 stoploss assets green dragon
+        1449593820,     # 12/8 2.0 capitulation
+        1449655200,     # 12/9 1.1 stoploss assets green dragon Z26.5 new version
+        1450585500,     # 12/19 New Mode 2: CAPITULATION
+        1450628700,     # 12/20 1.1 GREEN DRAGON 
+        1451854440,     # 1/3/16 2.0 CAPITULATION
+        1452149640,     # 1/7 Capitulation Reversal 2.3
+        1453257700,     # 1/8 Z27 Red Dragon 3.0
+        1454364600,     # 2/1 Z28 Crypto Long 1.1
+        
+        1454756100,     # 2/6 Z28.03 3.49 Checkpoint
+        1455108900,     # 2/10 Z28.03 3.51 Checkpoint
+
+        1464459360,     #[2016-05-28 14:16:00] Subclass.: 2.21 SELL UNLIMITED OVERBOUGHT "FINAL RUN OF THE BULLS"
+        1464636720,      #[2016-05-30 15:32:00] Subclass.: 1.00 BUY STOPLOSS ASSETS "BEGIN GREEN
+        
+        1467355140,     #[2016-07-01 02:39:00] Subclass.: 2.00 SELL STOPLOSS CURRENCY "END GREEN DRAGON"
+        1467594840,     #[2016-07-03 21:14:00] Subclass.: 2.20 BUY UNLIMITED "BEAR CROSS CONSOLIDATION CHECKPOINT"
+        1467894420,     #[2016-07-07 08:27:00] Subclass.: 2.22 SELL UNLIMITED "BEAR CROSS CONSOLIDATION CHECKPOINT"
+        1468096020,     #[2016-07-09 16:27:00] Subclass.: 2.10 BUY OVERSOLD "DESPAIR"
+        1470090420,     #[2016-08-01 18:27:00] Subclass.: 3.00 SELL STOPLOSS CURRENCY "BEGIN RED DRAGON"
+        1470759360,     #[2016-08-09 12:16:00] Subclass.: 1.10 BUY STOPLOSS ASSETS "CRYPTO LONG DEFAULT"
+        1471007760,     #[2016-08-12 09:16:00] Subclass.: 3.49 SELL UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+        1471369260,     #[2016-08-16 13:41:00] Subclass.: 1.10 BUY STOPLOSS ASSETS "CRYPTO LONG DEFAULT"
+        1471858860,     #[2016-08-22 05:41:00] Subclass.: 3.49 SELL UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+        1471905660,     #[2016-08-22 18:41:00] Subclass.: 3.51 BUY UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+        1472114460,     #[2016-08-25 04:41:00] Subclass.: 3.49 SELL UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+        1472218860,     #[2016-08-26 09:41:00] Subclass.: 3.51 BUY UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+        1472312460,     #[2016-08-27 11:41:00] Subclass.: 3.49 SELL UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+        
+        1472434860,     #See bottom of script for additional details
+        1472636460,
+        1472931660,
+        1480423320,
+        1480513320,
+        1483676040,
+        1483759200,
+        
+        #jan 11 12 sell/buy
+        1484155620,
+        1484198880,
+        #jan 16 sell/buy
+        1484576760,
+        1484620080,
+        #jan 21 sell/buy
+        1485390480,
+        1485408480,
+        
+        #feb 3
+        1486085640, #SELL
+        
+        #feb 6 buy/sell
+        1486339200,
+        1486382400,
+        #feb 9 buy/sell
+        1486598400,
+        1486641600,
+        
+        #feb 13 #BUY
+        1486780380
+
+        ])
+
+
+    trade_prices = ([
+        # Rounded up/down to nearest whole dollar; 
+        # Customer Reported Average
+        349,
+        312,
+        322,
+        205,
+        249,
+        255,
+        230,
+        239,
+        267,
+        247,
+        242,
+        225,
+        222,
+        232,
+        215,
+        235,
+        279,
+        # Master Signal Actual
+        235.49,
+        226.75,
+        232.39,
+        226,
+        #  Flash Trade Penalty 5%
+        250,
+        237.5, # 8 trades customer reported average loss
+        # Master Signal Actual
+        233.51, # HONEY
+        # 
+        300, # halloween glitch trade
+        303, # 1% halloween penalty
+        461.89, # btce master 436.86 #finex slave 486.92 
+        404.78, # btce master 404.806 #finex slave 404.77
+        330.47, #332.79 out bitfinex slave; 328.153 USD out btce master
+        319.85, #323.02 in  bitfinex slave;  316.68 in btce master
+        331.81, #11/18 9 AM sell 334.86 finex slave; 328.765 btce master
+        322.02, #11/20 10 AM buy 323.46 finex slave; 320.576 btce master
+        320.03, #11/2 320.96 finex slave; 319.101 btce master
+        332.03, #11/25 334.06 finex slave; 330 btce master
+        357.63, # 363.76 finex slave; 351.503 btce master
+        392.37, #387.972 btce slave 396.76 finex master 
+        405.96, #(395.81 finex master + 416.100 btce slave) /2 = 405.96 (slave 10 hours late due to api issues)
+        416.46, #(421.98 finex master + 410.939 btce slave) /2 = 416.46                    
+        456.3975, # 458.70 finex master; 454.095 btce slave
+        443.335, # 443.64 finex master; 443.03 btce slave    
+        424.87, #424.19 finex master, 425.55 btce slave
+        448.505, # 450.01 finex master; 447 btce slave 
+        379.185, # sell 378.86 finex master 379.51 btce slave
+        373.08, #buy 370.18 bitfinex master 375.98 btce slave        
+        373.47, #sell 373.47 finex master #MISSING SLAVE DATA... research needed
+        380.72, #buy 379.94 finex master 381.50 btce slave
+        
+        504.99, #sell bitfinex master     
+        540.50, #buy bitfinex master  
+        
+        #via MASTER A
+        # July and August 2016 
+        686.06,  #S
+        649.11,  #B
+        640.42,  #S
+        639.45,  #B
+        615.12,  #S
+        584.299, #B
+        584.00,  #S
+        581.002, #B
+        577.80,  #S
+        588.375, #B
+        573.612, #S
+        579.40,  #B
+        570.06,  #S
+
+        #early september
+        576.474, #B 
+        576.747, #S
+        595.973, #B
+        
+        #late november/early december
+        731.09, #S
+        737.667, #B
+        
+        #Jan5 and 7 2017
+        950.00, #S
+        818.26, #B
+        
+        #jan 11 12 sell/buy
+        760.003,
+        766.020,
+        
+        #jan 16 sell/buy
+        815.968,
+        818.899,
+        
+        #jan 21 sell/buy
+        888.025,
+        890.002,
+        
+        #feb 3
+        994.274, #SELL
+        
+        #feb 6 buy/sell
+        1018, #ESTIMATE - DETAIL LOST
+        1018, #ESTIMATE - DETAIL LOST
+        
+        #feb 9 buy/sell
+        1045, #ESTIMATE - DETAIL LOST
+        1017, #ESTIMATE - DETAIL LOST
+        
+        #feb 13 #BUY
+        978.369
+        ])
+             
+             
+                    
+    n = 0
+    while n < len(trade_times):    
+        
+        if info.current_time > trade_times[n]:   
+            if info.current_time < (trade_times[n] + info.interval + 1):
+                log(trade_times[-n])
+                if holding:
+                    sell(PAIR, price = trade_prices[n])
+                    storage.trades +=1
+                else:
+                    buy(PAIR, price = trade_prices[n])
+                    storage.trades +=1
+        n+=1        
+   
+    days = (info.max_ticks*info.interval) / 86400             
+    trades = storage.trades
+    frequency = days/(trades+0.00001)
+    current_assets = portfolio.btc + portfolio.usd/data[PAIR].price
+    current_currency = portfolio.usd + portfolio.btc*data[PAIR].price
+    
+    mean_assets = portfolio.btc + portfolio.usd/data(interval=43200)[PAIR].ma(3)
+    mean_currency = portfolio.usd + portfolio.btc*data(interval=43200)[PAIR].ma(3)
+    
+    ROI_assets = float(current_assets) / (float(storage.start_assets) + 0.0001)
+    ROI_currency = float(current_currency) / (float(storage.start_currency) + 0.0001)
+    
+    mROI_assets = float(mean_assets) / (float(storage.start_assets) + 0.0001)
+    mROI_currency = float(mean_currency) / (float(storage.start_currency) + 0.0001)
+        
+    
+    bnh = float(data[PAIR].price / storage.start_price)
+    start_date = time.strftime(
+            '%Y-%m-%d %H:%M:%S', time.localtime(info.begin))
+
+    plot('ROI_assets', (100*(ROI_assets - 1)), secondary=True)
+    plot('ROI_currency', (100*(ROI_currency-1)), secondary=True)
+    #plot('mROI_assets', (100*(mROI_assets - 1)), secondary=True)
+    #plot('mROI_currency', (100*(mROI_currency-1)), secondary=True)    
+    #plot('ma3', data(interval=43200)[PAIR].ma(3))
+    plot('Buy_Hold', (100*(bnh-1.01)), secondary=True)
+    
+
+    
+    if info.tick == (info.max_ticks-1):
+        log('***********************************')
+        log('start date: %s' % start_date)
+        log('start BTC value: %.2f' % storage.start_assets)
+        log('start USD value: %.2f' % storage.start_currency)
+        log('end BTC value: %.2f' % current_assets)
+        log('end USD value: %.2f' % current_currency)
+        log('trades %s' % trades)
+        log('days %.2f' % days)
+        log('frequency %.2f days/trade' % frequency)
+        log('ROI_assets %.2fX' % ROI_assets)
+        log('ROI_currency %.2fX' % ROI_currency)
+        log('ROI_BNH %.2fX' % bnh)
+        
+    ######################################################################          
+    ######################################################################          
+    ######################################################################    
+    ######################################################################  
+    '''            BEGIN MAX DRAW DOWN CALCULATION                     '''
+    ######################################################################      
+    
+    #dd()
+    
+    plot('0', 0, secondary=True)
+    if info.tick > 250:
+        plot('50', 50, secondary=True)
+        plot('_50_', -50, secondary=True)
+    if info.tick > 500:
+        plot('100', 100, secondary=True)        
+    if info.tick == 0:
+        plot('00', -300, secondary=True)
+        plot('000', 1400)    
+    
+import time    
+
+
+# ROLLING is resource intensive, must be int() type, days of RDD period
+ROLLING = 0 # 0 days turns "rolling" calculation off
+    
+def dd():
+
+    if info.tick == 0:
+        storage.start = time.time()    
+    dd, storage.max_dd = max_dd(0)
+    bnh_dd, storage.max_bnh_dd = bnh_max_dd(0)
+    plot('Algo_Draw_Down', dd, secondary=True)   
+    plot('Buy_Hold_Draw_Down', bnh_dd, secondary=True)  
+    
+    if ROLLING > 0:
+
+        rolling_dd, storage.max_rolling_dd = max_dd(
+            ROLLING*86400/info.interval)    
+        rolling_bnh_dd, storage.max_rolling_bnh_dd = bnh_max_dd(
+            ROLLING*86400/info.interval)
+        plot('rolling_dd', rolling_dd, secondary=True)  
+        plot('rolling_bnh_dd', rolling_bnh_dd, secondary=True)       
+    
+
+
+
+def max_dd(rolling):
+    
+    port_value = float(portfolio.usd+portfolio.btc*data.btc_usd.price)
+    max_value = 'max_value_' + str(rolling)
+    values_since_max = 'values_since_max_' + str(rolling)
+    max_dd = 'max_dd_' + str(rolling)
+    storage[max_value] = storage.get(max_value, [port_value])
+    storage[values_since_max] = storage.get(values_since_max, [port_value])
+    storage[max_dd] = storage.get(max_dd, [0])
+    storage[max_value].append(port_value)    
+    if port_value > max(storage[max_value]):
+        storage[values_since_max] = [port_value]
+    else:
+        storage[values_since_max].append(port_value)
+    storage[max_value] = storage[max_value][-rolling:]
+    storage[values_since_max] = storage[values_since_max][-rolling:]    
+    dd = -100*(max(storage[max_value]) - storage[values_since_max][-1]
+        )/max(storage[max_value])
+    storage[max_dd].append(float(dd))
+    storage[max_dd] = storage[max_dd][-rolling:]
+    max_dd = min(storage[max_dd])
+
+    return (dd, max_dd)
+  
+def bnh_max_dd(rolling):
+    
+    coin = data.btc_usd.price
+    bnh_max_value = 'bnh_max_value_' + str(rolling)
+    bnh_values_since_max = 'bnh_values_since_max_' + str(rolling)
+    bnh_max_dd = 'bnh_max_dd_' + str(rolling)    
+    storage[bnh_max_value] = storage.get(bnh_max_value, [coin])
+    storage[bnh_values_since_max] = storage.get(bnh_values_since_max, [coin])
+    storage[bnh_max_dd] = storage.get(bnh_max_dd, [0]) 
+    storage[bnh_max_value].append(coin)
+    if coin > max(storage[bnh_max_value]):
+        storage[bnh_values_since_max] = [coin]        
+    else:
+        storage[bnh_values_since_max].append(coin)
+    storage[bnh_max_value] = storage[bnh_max_value][-rolling:]        
+    storage[bnh_values_since_max] = storage[bnh_values_since_max][-rolling:]  
+    bnh_dd = -100*(max(storage[bnh_max_value]) - storage[bnh_values_since_max][-1]
+        )/max(storage[bnh_max_value])
+    storage[bnh_max_dd].append(float(bnh_dd))
+    storage[bnh_max_dd] = storage[bnh_max_dd][-rolling:]    
+    bnh_max_dd = min(storage[bnh_max_dd])    
+    return (bnh_dd, bnh_max_dd)    
+    
+ 
+def stop():
+    
+
+
+    '''    
+    log('ELAPSED TIME: %.1f sec' % (time.time() - storage.start))
+    log('MAX DD......: %.2f pct' % storage.max_dd)
+    log('MAX BNH DD..: %.2f pct' % storage.max_bnh_dd)   
+    '''
+    log('LAST........: %s' % data[PAIR].price)
+    
+    if ROLLING > 0:
+        log('R MAX DD....: %.2f pct' % storage.max_rolling_dd)
+        log('R MAX BNH DD: %.2f pct' % storage.max_rolling_bnh_dd)            
+
+    
+    
+    
+'''
+[2016-08-28 21:41:00] Mode.....: 0.00 Crypto Long Default
+[2016-08-28 21:41:00] Subclass.: 1.10 BUY STOPLOSS ASSETS "CRYPTO LONG DEFAULT"
+[2016-08-28 21:41:00] Emailing the strategy owner: "BUY OR CRY"
+[2016-08-28 21:41:00] 1472434860
+[2016-08-28 21:41:00]  BUY: 0.38335384 BTC (at 576.474 USD)
+
+[2016-08-31 05:41:00] Mode.....: 3.00 RED DRAGON (12h SMA 90>60>30)
+[2016-08-31 05:41:00] Subclass.: 3.49 SELL UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+[2016-08-31 05:41:00] Emailing the strategy owner: "FIAT TIME"
+[2016-08-31 05:41:00] 1472636460
+[2016-08-31 05:41:00]  SELL: 0.38335384 BTC (at 576.747 USD)
+
+[2016-09-03 15:41:00] Mode.....: 3.00 RED DRAGON (12h SMA 90>60>30)
+[2016-09-03 15:41:00] Subclass.: 3.51 BUY UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"
+[2016-09-03 15:41:00] Emailing the strategy owner: "BUY OR CRY"
+[2016-09-03 15:41:00] 1472931660
+[2016-09-03 15:41:00]  BUY: 0.37098718 BTC (at 595.973 USD)
+
+[2016-11-29 07:42:00] Mode.....: 2.00 CAPITULATION (POST GREEN DRAGON)
+[2016-11-29 07:42:00] Subclass.: 2.00 SELL STOPLOSS CURRENCY "END GREEN DRAGON" www.youtube.com/watch?v=Dhu22Iy8fGk "harvester of sorrow"
+[2016-11-29 07:42:00] Emailing the strategy owner: "FIAT TIME"
+[2016-11-29 07:42:00] 1480423320
+[2016-11-29 07:42:00]  SELL: 0.37024521 BTC (at 731.09 USD)
+
+[2016-11-30 08:42:00] Mode.....: 1.00 GREEN DRAGON (12h SMA 30>60>90)
+[2016-11-30 08:42:00] Subclass.: 1.00 BUY STOPLOSS ASSETS "BEGIN GREEN DRAGON" www.youtube.com/watch?v=WlpsPG3FTKM "the sky is the limit"
+[2016-11-30 08:42:00] Emailing the strategy owner: "BUY OR CRY"
+[2016-11-30 08:42:00] 1480513320
+[2016-11-30 08:42:00]  BUY: 0.36621073 BTC (at 737.667 USD)
+
+[2017-01-05 23:14:00] Minutes of Clock Drift Algorithm/Tradewave: 55 / 504
+[2017-01-05 23:14:00] Mode.....: 2.00 CAPITULATION (POST GREEN DRAGON)
+[2017-01-05 23:14:00] Subclass.: 2.00 SELL STOPLOSS CURRENCY "END GREEN DRAGON" www.youtube.com/watch?v=Dhu22Iy8fGk "harvester of sorrow"
+[2017-01-05 23:14:00] Emailing the strategy owner: "FIAT TIME"
+[2017-01-05 23:14:00] 1483676040
+[2017-01-05 23:14:00]  SELL: 0.36547832 BTC (at 950.00 USD)
+
+
+
+[2017-01-06 22:20:00] Minutes of Clock Drift Algorithm/Tradewave: 2 / 687
+[2017-01-06 22:20:00] Mode.....: 1.00 GREEN DRAGON (12h SMA 30>60>90)
+[2017-01-06 22:20:00] Subclass.: 1.11
+[2017-01-06 22:20:00] Emailing the strategy owner: "BUY OR CRY"
+[2017-01-06 22:20:00] 1483759200
+[2017-01-06 22:20:00]  BUY: 0.4215999 BTC (at 818.268 USD)
+
+'''
+    
