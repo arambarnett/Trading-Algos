@@ -1,0 +1,64 @@
+PAIR = pairs.btc_usd
+
+def initialize():
+    
+    storage.reset(); log('storage.reset()')
+    storage.order_price = storage.get('order_price', []) 
+    storage.signal_time = storage.get('signal_time', 0)
+
+def indicators():
+
+    # VWAP beginning 1 ticks ago, across the 30 previous ticks
+    storage.x = float(data.btc_usd[-1].vwap(30))
+    storage.price = float(data.btc_usd.close)
+    storage.prev = float(data.btc_usd[-2].close)
+    
+def tick():
+    
+    indicators()
+    x = storage.x
+    price = storage.price
+    prev = storage.prev
+    
+    holding_currency = False
+    holding_assets = False
+    if portfolio.usd > 0.02*price:
+        holding_currency = True
+    if portfolio.btc > 0.02:
+        holding_assets = True
+
+    #create permanent sell order for last buy ( last buy price + 15 usd)
+    nil = 0.000000001
+    
+    if len(storage.order_price) > 0:
+        mean_price_paid = sum(storage.order_price)/len(storage.order_price)
+        sell_price = mean_price_paid + 15
+        if price > sell_price:
+            sell_price=price
+            if holding_assets:
+                try: sell(PAIR, amount=0.5, price=sell_price)
+                except TradewaveFundsError:
+                    storage.order_price = []                    
+                    try:
+                        sell(PAIR)
+                    except TradewaveInvalidOrderError:
+                        pass                        
+                    except: log('sell fail 1'); pass    
+                except: log('sell fail 2'); pass
+
+    # buy and save market transaction price:
+    if price * 1.0075 < x:
+        if prev * 1.0075 > x:
+            storage.signal_time = info.current_time
+        if info.current_time > (storage.signal_time + 43200):        
+            if holding_currency:
+                try:
+                    order = buy(PAIR, 0.5)
+                    storage.order_price.append(order.price)     
+                except TradewaveFundsError:
+                    try:
+                        buy(PAIR)
+                    except TradewaveInvalidOrderError:
+                        pass
+                    except: log('buy fail 1'); pass                   
+                except: log('buy fail 2'); pass
