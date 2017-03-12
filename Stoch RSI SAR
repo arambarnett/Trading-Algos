@@ -1,0 +1,81 @@
+# Stoch RSI / SAR v2.0
+
+# litepresence
+
+STOCHRSI_PERIOD         = 18
+STOCHRSI_K              = 12
+STOCHRSI_D              = 14
+STOCHRSI_LOW            = 20
+STOCHRSI_HIGH           = 80
+SAR_ACCEL               = 0.002
+SAR_MAX                 = 0.02
+
+
+
+def initialize():
+    
+    storage.invested = None
+    
+def instruments():
+
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    currency_code = ''.join(list((pair)[3:6]))
+    asset_code = ''.join(list((pair)[0:3]))
+    instrument_pair = asset_code + '_' + currency_code
+    storage.instrument = pairs[instrument_pair]
+    storage.currency = portfolio[currencies[currency_code]]
+    storage.assets = portfolio[currencies[asset_code]]
+    storage.currency_CODE = (currency_code).upper()
+    storage.asset_CODE = (asset_code).upper()
+    return        
+
+def tick():
+    
+    instruments()
+
+    fastk, fastd = data[info.primary_pair].stochrsi(STOCHRSI_PERIOD, 
+        fastk_period = STOCHRSI_K, 
+        fastd_period = STOCHRSI_D)
+        
+    sar = data[info.primary_pair].sar( 
+        acceleration = SAR_ACCEL, 
+        max_acceleration = SAR_MAX)
+    
+        
+    price = data[info.primary_pair].ema(2)
+    
+    plot('fastk', fastk, secondary=True) 
+    plot('fastd', fastd, secondary=True)
+    plot('SAR_short', sar)
+
+    
+    if info.tick == 0:
+        plot('F', -500, secondary=True)
+    
+    if storage.assets > 0.12:
+        storage.invested = True
+    else:
+        storage.invested = False
+        
+    
+        
+    if (fastk >= STOCHRSI_HIGH):
+        if (price >= sar): 
+            if not storage.invested:
+                buy(info.primary_pair)
+                
+    elif (fastk <= STOCHRSI_LOW):
+        if (price <= sar):
+            if storage.invested:
+                sell(info.primary_pair)
+                
