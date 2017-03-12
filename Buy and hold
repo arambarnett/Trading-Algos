@@ -1,0 +1,13 @@
+
+"""
+The simplest strategy of them all: buy-and-hold.
+"""
+
+def initialize():
+    # Detect whether we're already holding
+    storage.invested = (portfolio.btc > portfolio.usd)
+
+def tick():
+    if not storage.invested:
+        buy(info.primary_pair)
+        storage.invested = True
