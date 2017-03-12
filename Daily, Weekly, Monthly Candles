@@ -1,0 +1,276 @@
+### Daily Weekly and Monthly Candles
+
+import numpy as np
+import talib as ta
+import math as ma
+
+PAIR = info.primary_pair
+
+def initialize():
+    storage.reset()
+
+
+DEPTH = 2000 # 12h candles
+
+def deep_12h(depth):
+    
+    storage.deep_h = storage.get('deep_h', [])
+    storage.deep_l = storage.get('deep_l', [])
+    storage.deep_o = storage.get('deep_o', [])
+    storage.deep_c = storage.get('deep_c', [])
+    storage.deep_v = storage.get('deep_v', [])
+    if info.tick==0:
+        for x in range(depth,0,-1):
+            storage.deep_h.append(float(data(interval=43200)[PAIR][-x].high))
+            storage.deep_l.append(float(data(interval=43200)[PAIR][-x].low))            
+            storage.deep_o.append(float(data(interval=43200)[PAIR][-x].open))
+            storage.deep_c.append(float(data(interval=43200)[PAIR][-x].close))
+            storage.deep_v.append(float(data(interval=43200)[PAIR][-x].volume))
+    else:
+        storage.deep_h.append(float(data(interval=43200)[PAIR].high))  
+        storage.deep_l.append(float(data(interval=43200)[PAIR].low))
+        storage.deep_o.append(float(data(interval=43200)[PAIR].open))  
+        storage.deep_c.append(float(data(interval=43200)[PAIR].close))  
+        storage.deep_v.append(float(data(interval=43200)[PAIR].volume))        
+    storage.deep_h=storage.deep_h[-depth:]
+    storage.deep_l=storage.deep_l[-depth:] 
+    storage.deep_o=storage.deep_o[-depth:]
+    storage.deep_c=storage.deep_c[-depth:] 
+    storage.deep_v=storage.deep_v[-depth:]
+    h=np.array(storage.deep_h)
+    l=np.array(storage.deep_l) 
+    o=np.array(storage.deep_o)
+    c=np.array(storage.deep_c) 
+    v=np.array(storage.deep_v)    
+
+    return (h,l,o,c,v)
+
+
+def daily(h,l,o,c,v):
+
+    storage.daily_hlocv = storage.get('daily_hlocv', [[],[]])
+
+    if info.tick%2==0:
+        daily_h1 = []
+        daily_h2 = []
+        daily_l1 = []
+        daily_l2 = []
+        daily_o = []
+        daily_c = []
+        daily_v1 = []
+        daily_v2 = []        
+        for n in range(len(c),0,-1):
+        
+            if n%2==0:
+                daily_o.append(o[-n])
+                daily_v1.append(v[-n])
+                daily_h1.append(h[-n])
+                daily_l1.append(l[-n])            
+            if n%2==1: 
+                daily_c.append(c[-n])            
+                daily_v2.append(v[-n])
+                daily_h2.append(h[-n])
+                daily_l2.append(l[-n])      
+        
+        max_candles = int(ma.floor( len(c) /2) )
+        
+        daily_h = np.array([ daily_h1[-max_candles:],
+                             daily_h2[-max_candles:] ])
+        daily_h = np.amax(daily_h, axis=0)
+        
+        daily_l = np.array([ daily_l1[-max_candles:],
+                             daily_l2[-max_candles:] ])
+        daily_l = np.amax(daily_l, axis=0)                     
+                            
+        daily_o = np.array(daily_c[-max_candles:])            
+        daily_c = np.array(daily_c[-max_candles:])
+        
+        daily_v = ( np.array(daily_v1[-max_candles:]) + 
+                    np.array(daily_v2[-max_candles:]) )
+    
+        storage.daily_hlocv = [ daily_h.tolist(),
+                                daily_l.tolist(),
+                                daily_o.tolist(),            
+                                daily_c.tolist(),
+                                daily_v.tolist()]
+
+        return (daily_h, daily_l, daily_o, daily_c, daily_v)
+    else: 
+        return (np.array(storage.daily_hlocv[0]),
+                np.array(storage.daily_hlocv[1]),
+                np.array(storage.daily_hlocv[2]),
+                np.array(storage.daily_hlocv[3]),
+                np.array(storage.daily_hlocv[4]))
+
+def weekly(h,l,o,c,v):
+    
+    storage.weekly_hlocv =  storage.get('weekly_hlocv', 
+                                [[],[],[],[],[],[],[]])
+    
+    if info.tick%7==0:
+    
+        weekly_h1= []
+        weekly_h2= []
+        weekly_h3= []
+        weekly_h4= []
+        weekly_h5= []        
+        weekly_h6= []
+        weekly_h7= []
+        
+        weekly_l1= []
+        weekly_l2= []
+        weekly_l3= []
+        weekly_l4= []
+        weekly_l5= []        
+        weekly_l6= []
+        weekly_l7= []
+        
+        weekly_o= []
+        
+        weekly_c= []
+        
+        weekly_v1= []
+        weekly_v2= []
+        weekly_v3= []
+        weekly_v4= []
+        weekly_v5= []        
+        weekly_v6= []
+        weekly_v7= []
+
+        for n in range(len(c),0,-1):
+            if n%7==0:
+                weekly_h1.append(h[-n])
+                weekly_l1.append(l[-n])
+                weekly_o.append(o[-n])
+                weekly_v1.append(v[-n])
+            if n%7==1:
+                weekly_h2.append(h[-n])
+                weekly_l2.append(l[-n])
+                weekly_v2.append(v[-n])
+            if n%7==2:
+                weekly_h3.append(h[-n])
+                weekly_l3.append(l[-n])
+                weekly_v3.append(v[-n])
+            if n%7==3:
+                weekly_h4.append(h[-n])
+                weekly_l4.append(l[-n])
+                weekly_v4.append(v[-n])
+            if n%7==4:
+                weekly_h5.append(h[-n])
+                weekly_l5.append(l[-n])
+                weekly_v5.append(v[-n])
+            if n%7==5:
+                weekly_h6.append(h[-n])
+                weekly_l6.append(l[-n])
+                weekly_v6.append(v[-n])
+            if n%7==6:
+                weekly_h7.append(h[-n])
+                weekly_l7.append(l[-n])
+                weekly_v7.append(v[-n])
+                weekly_c.append(c[-n])
+                
+    
+        max_candles = int(ma.floor( len(c) /7) )
+        
+        weekly_h = np.array([   weekly_h1[-max_candles:],
+                                weekly_h2[-max_candles:],
+                                weekly_h3[-max_candles:],
+                                weekly_h4[-max_candles:],
+                                weekly_h4[-max_candles:],
+                                weekly_h5[-max_candles:],
+                                weekly_h7[-max_candles:] ])
+        weekly_h = np.amax(weekly_h, axis=0) 
+        
+        weekly_l = np.array([   weekly_l1[-max_candles:],
+                                weekly_l2[-max_candles:],
+                                weekly_l3[-max_candles:],
+                                weekly_l4[-max_candles:],
+                                weekly_l4[-max_candles:],
+                                weekly_l5[-max_candles:],
+                                weekly_l7[-max_candles:] ])
+        weekly_l = np.amin(weekly_l, axis=0)         
+
+        weekly_o = np.array(weekly_o[-max_candles:])
+        weekly_c = np.array(weekly_c[-max_candles:])
+        
+        weekly_v = ( np.array(weekly_v1[-max_candles:]) +
+                    np.array(weekly_v2[-max_candles:]) +
+                    np.array(weekly_v3[-max_candles:]) +
+                    np.array(weekly_v4[-max_candles:]) +
+                    np.array(weekly_v5[-max_candles:]) +
+                    np.array(weekly_v6[-max_candles:]) +
+                    np.array(weekly_v7[-max_candles:]) )
+                    
+                
+        
+        storage.weekly_hlocv = [ weekly_h.tolist(),
+                                weekly_l.tolist(),
+                                weekly_o.tolist(),            
+                                weekly_c.tolist(),
+                                weekly_v.tolist()]
+    
+        return (weekly_h, weekly_l, weekly_o, weekly_c, weekly_v)
+    else: 
+        return (np.array(storage.weekly_hlocv[0]),
+                np.array(storage.weekly_hlocv[1]),
+                np.array(storage.weekly_hlocv[2]),
+                np.array(storage.weekly_hlocv[3]),
+                np.array(storage.weekly_hlocv[4]))    
+
+
+def tick():
+
+
+    h,l,o,c,v = deep_12h(DEPTH)
+    daily_h, daily_l, daily_o, daily_c, daily_v = daily(h,l,o,c,v)
+    weekly_h, weekly_l, weekly_o, weekly_c, weekly_v = weekly(
+        daily_h, daily_l, daily_o, daily_c, daily_v)
+    
+
+    plot('weekly_l', weekly_l[-1])    
+    plot('daily_l', daily_l[-1])
+    plot('l', l[-1]) 
+    
+    plot('weekly_h', weekly_h[-1])    
+    plot('daily_h', daily_h[-1])
+    plot('h', h[-1])
+
+    
+    sma12h_30 = ta.MA(c, 30)
+    sma1d_30 = ta.MA(daily_c, 30)
+    sma1w_30 = ta.MA(weekly_c, 30)
+    
+    #12h 30
+    plot('sma12h_30', sma12h_30[-1])
+    plot('12h_30', data(interval=43200)[PAIR].ma(30))
+  
+    #1d 30  
+    plot('sma1d_30', sma1d_30[-1])
+    plot('12h_60', data(interval=43200)[PAIR].ma(60))      
+    
+    #1w 30
+    plot('sma1w_30', sma1w_30[-1])
+    plot('12h_420', ta.MA(c, 420)[-1])
+    
+    #1d 365 and 1w 52
+    plot('12h_730', ta.MA(c, 730)[-1])
+    plot('365_day', ta.MA(daily_c, 365)[-1])
+    plot('52_week', ta.MA(weekly_c, 52)[-1])
+    
+    # running daily and weekly: high and low
+    
+    r_daily_h = np.max(data(interval=43200)[PAIR].period(2,'high'))
+    r_daily_l = np.min(data(interval=43200)[PAIR].period(2,'low'))
+    r_weekly_h = np.max(data(interval=43200)[PAIR].period(7,'high'))
+    r_weekly_l = np.min(data(interval=43200)[PAIR].period(7,'low'))    
+    
+    plot('r_daily_h', r_daily_h)
+    plot('r_daily_l', r_daily_l)
+    plot('r_weekly_h', r_weekly_h)
+    plot('r_weekly_l', r_weekly_l)    
+    
+
+    
+def stop():
+    log('info.interval = %s' % info.interval)
+    log('info.tick = %s' % info.tick)
