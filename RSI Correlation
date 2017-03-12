@@ -1,0 +1,89 @@
+'''
+Find an RSI fractal that matches the current RSI fractal
+If price rose after that fractal, BUY, else SELL
+'''
+
+PAIR = info.primary_pair
+
+import numpy as np
+import talib as ta
+
+DEPTH = 5000
+PAIR = info.primary_pair
+
+PERIOD = 90
+
+def deep_c(depth):
+    
+    storage.deep_c = storage.get('deep_c', [])
+    if info.tick==0:
+        for x in range(depth):
+            n = depth - x 
+            storage.deep_c.append(float(data[PAIR][-n].close))
+    else:
+        storage.deep_c.append(float(data[PAIR].close))
+    storage.deep_c=storage.deep_c[-depth:]
+    return np.array(storage.deep_c)
+    
+def tick():
+    
+    # Create a deep array of closing values
+    c = deep_c(DEPTH)
+
+    # Create a deep array of RSI values
+    rsi = ta.RSI(c, PERIOD)
+    
+    # Take a slice of the most recent RSI values
+    data1 = rsi[-PERIOD:]
+
+    # Correlate the recent slice to previous slices
+    correls = []
+    for n in range(DEPTH-(2*PERIOD), PERIOD, -1):
+        
+        # Create slices of RSI data
+        alpha = PERIOD + n
+        data2 = rsi[-alpha:]
+        data2 = data2[:PERIOD]
+        
+        # Compare each slice to the most recent data
+        correls.append(ta.CORREL(data1, data2, PERIOD)[-1])
+    
+    # Fill in zeros for the recent correlations    
+    for n in range(PERIOD):
+            correls.append(0)   
+
+
+    # find the value and location of the best fit    
+    max_correl_index = np.argmax(correls)
+    max_correl_value = np.max(correls)
+    
+    if info.tick < 5:
+        log('__________________')
+        log(rsi[-1])
+        #log(data1)    
+        #log(data2)
+        log(len(correls))
+        log(max_correl_value)
+        log(max_correl_index)
+        log(correls[-(PERIOD+1):])
+        
+    # if there is a highly correlated match:
+    if max_correl_value > 0.8:
+
+        # if price rose after the match, then buy:
+        if c[-(max_correl_index+int(PERIOD/3))] > 1.05*c[-(max_correl_index)]:
+            if portfolio.usd >1:
+                buy(PAIR)
+        # if price fell after the match, then sell:
+        if c[-(max_correl_index+int(PERIOD/3))] < 0.95*c[-(max_correl_index)]:
+            if portfolio.btc >1:
+                sell(PAIR)
+    
+    
+    
+    
+    plot('rsi', rsi[-1], secondary=True)
+    z = 0
+    if info.tick % PERIOD == 0:
+        z = 100
+    plot('z', z, secondary=True)
