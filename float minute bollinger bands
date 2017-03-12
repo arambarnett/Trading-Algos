@@ -1,0 +1,111 @@
+
+'''
+Float Minute Bollinger Bands
+
+Use this definition to access Tradewave's indicator API via floating point periods; may be adapted to all. 
+
+
+litepresence 
+'''
+
+PAIR = info.primary_pair
+
+SIG_MINUTES = 489.72121
+MID_MINUTES = 6752.96574
+STD_MINUTES = 9873.32124 
+# period in minutes; period X interval_in_minutes; such that: 2h sma 30 is 120X30=3600 minutes
+# 12h=720m 6h=360m 4h=240m 2h=120m 1h=60m 30m=30m etc. 
+# minimum interval 2*tick interval in minutes
+# maximum 180,000 minutes; 12h 250
+
+
+def Float_Minute(minutes, indicator, depth): 
+
+    # Find the smallest possible array to crunch data from:
+    import math
+ 
+    if minutes < 1:
+        log('minimum period 2 minutes returns 1m data[PAIR].sma(2)')
+        raise Stop()
+    if minutes > 180000:
+        log('maximum period 12h 250 = 180,000 minutes')
+        raise Stop()
+    if minutes < 2*info.interval/60:
+        log('select smaller tick size for this FMSMA interval')
+        raise Stop()
+    
+    if 2 <= minutes < 10:
+        data_interval = 60
+        period = minutes
+    if 10 <= minutes < 20:
+        data_interval = 300
+        period = minutes / 5
+    if 20 <= minutes < 30:   
+        data_interval = 600
+        period = minutes / 10
+    if 30 <= minutes < 60:
+        data_interval = 900
+        period = minutes / 15
+    if 60 <= minutes < 120:
+        data_interval = 1800
+        period = minutes / 30
+    if 120 <= minutes < 240:  
+        data_interval = 3600
+        period = minutes / 60
+    if 240 <= minutes < 480:
+        data_interval = 7200
+        period = minutes / 120
+    if 480 <= minutes < 1440:
+        data_interval = 14400
+        period = minutes / 240
+    if minutes >= 1440:
+        data_interval = 43200
+        period = minutes / 720
+        
+    period_floor = int(math.floor(period))
+    period_ceiling = int(math.ceil(period))
+
+    if period_floor == period_ceiling:
+        if indicator == 'ma':
+            output = float(data(interval=data_interval)[PAIR][depth].ma(period))
+        
+        elif indicator == 'ema':
+            output = float(data(interval=data_interval)[PAIR][depth].ema(period))            
+        elif indicator == 'std':
+            output = float(data(interval=data_interval)[PAIR][depth].std(period))
+        
+    else:
+        if indicator == 'ma':
+            floor = float(data(
+                interval=data_interval)[PAIR][depth].ma(period_floor))
+            ceiling = float(data(
+                interval=data_interval)[PAIR][depth].ma(period_ceiling))
+        elif indicator == 'ema':
+            floor = float(data(
+                interval=data_interval)[PAIR][depth].ema(period_floor))
+            ceiling = float(data(
+                interval=data_interval)[PAIR][depth].ema(period_ceiling))                
+        elif indicator == 'std':            
+            floor = float(data(
+                interval=data_interval)[PAIR][depth].std(period_floor))
+            ceiling = float(data(
+                interval=data_interval)[PAIR][depth].std(period_ceiling))            
+        ratio = period - period_floor
+        inverse = 1-ratio
+        output = ratio*ceiling + inverse*floor
+    return output
+
+def tick():
+    
+    signal = Float_Minute(SIG_MINUTES, 'ma', -1)
+    midline = Float_Minute(MID_MINUTES, 'ema', -1)
+    std = Float_Minute(STD_MINUTES, 'std', -1)
+    upper = midline+2*std
+    lower = midline-2*std
+    
+    plot('signal', signal)
+    plot('upper', upper)
+    plot('lower', lower)
+    plot('midline', midline)
+    
+    
