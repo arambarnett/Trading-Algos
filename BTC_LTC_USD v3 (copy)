@@ -1,0 +1,87 @@
+# Test arbitrage
+
+LIVE = False
+try: end = info.end
+except: LIVE = True
+
+
+import numpy as np
+import talib as ta
+import time as t
+
+THRESHOLD = 0.006 #0.006
+
+def initialize():
+    
+    storage.reset()
+    
+    storage.diff = storage.get('diff', 0)
+    storage.max_order = storage.get('max_order', 0)    
+    storage.orders = storage.get('orders', 0)
+
+
+def tick():
+    
+    ltc_btc_price = float(data.ltc_btc.price)
+    btc_usd_price = float(data.btc_usd.price)
+    ltc_usd_price = float(data.ltc_usd.price)
+    
+    
+    import numpy as np
+    import talib as ta
+    min_ltc_volume = ta.MA(
+        np.minimum(
+        data.ltc_btc.period(20,'volume'),
+        data.ltc_usd.period(20,'volume')
+        ), 10)[-1]
+    
+    usd_to_btc = 1000/btc_usd_price
+    btc_to_ltc = usd_to_btc/ltc_btc_price
+    ltc_to_usd = btc_to_ltc*ltc_usd_price
+
+    diff_now = (ltc_to_usd - 1000)/1000
+
+    plot('min_ltc_volume', min_ltc_volume)
+    plot('arb_threshold', THRESHOLD, secondary=True)
+    log('%.5f' % diff_now)
+    plot('diff_now', diff_now, secondary=True)
+    plot('ltc_btc_price', ltc_btc_price*100000)
+    plot('ltc_usd_price', ltc_usd_price*100)    
+
+
+    order_size = 0.5*min_ltc_volume*ltc_usd_price/btc_usd_price
+
+
+        
+    if diff_now > THRESHOLD:    
+      if order_size > 0.5:
+        if order_size > storage.max_order:
+            storage.max_order = order_size          
+        if portfolio.usd > 0.02*btc_usd_price:
+            log(min_ltc_volume)
+            if order_size < float(portfolio.usd)/btc_usd_price:
+                order = buy(pairs.btc_usd, price=btc_usd_price, amount=order_size)
+                storage.orders+=1
+            else:
+                order = buy(pairs.btc_usd, price=btc_usd_price)
+                
+        if LIVE: 
+            while not order.filled:
+                time.sleep(20)
+                portfolio.update()
+            
+        if portfolio.btc > 0.02:
+                order = buy(pairs.ltc_btc, price=ltc_btc_price)
+                
+        if LIVE: 
+            while not order.filled:
+                time.sleep(20)
+                portfolio.update()
+                
+        if portfolio.ltc > 0.1:
+                sell(pairs.ltc_usd, price=ltc_usd_price)
+                
+def stop():        
+
+    log('orders: %s' % storage.orders)
+    log('potential max order: %s' % storage.max_order)
