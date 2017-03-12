@@ -1,0 +1,399 @@
+import numpy as np
+from scipy import stats
+from scipy.optimize import curve_fit
+import math
+
+def initialize():
+    #storage.reset()
+    pass
+
+PAIR = info.primary_pair
+DEPTH = 2000
+
+half_test = int(info.max_ticks/2)
+
+def deep(depth, pair):
+    
+    y=np.zeros((4,depth), dtype=float) # manifest 2d array of zeros  
+    for i in range(-depth,0): 
+        z=data[pair][i]
+        y[0][i]=z.high
+        y[1][i]=z.low
+        y[2][i]=z.open
+        y[3][i]=z.close
+    hloc=np.resize(y, (4, np.count_nonzero(y[0]))) #remove zero data
+    # numpy arrays in order h,l,o,c
+    return hloc[0],hloc[1],hloc[2], hloc[3]
+
+def future():
+    
+    storage.future = storage.get('future', [0,0,0,0])
+    if info.tick == (info.max_ticks-1):
+        h,l,o,c = deep((info.max_ticks), PAIR)
+        storage.future = [h.tolist(), l.tolist(), o.tolist(), c.tolist()]
+    h = np.array(storage.future[0])
+    l = np.array(storage.future[1])
+    o = np.array(storage.future[2])
+    c = np.array(storage.future[3])
+    return h, l, o, c
+    
+def model_1(period, future_c):
+    # y = mx + b
+    t = info.tick    
+    if t < (half_test+200): 
+        try:
+            if t == half_test:
+                 plot('model_1', future_c[-1])
+            elif t == (half_test+period):   
+                x=np.arange((half_test-period) , half_test)
+                y=future_c[-period:]            
+                slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
+                linear = slope*info.tick + intercept
+                plot('model_1', linear)
+        except: pass
+    
+def model_1c(period, future_c):
+    # y = mx + b
+    t = info.tick    
+    if t < (half_test+200): 
+        try:
+            if t == half_test:
+                 plot('model_1c', future_c[-1])
+            elif t == (half_test+period):   
+                x=np.arange((half_test-period) , half_test)
+                y=future_c[-period:]            
+                slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
+                linear = slope*info.tick + intercept
+                
+                
+                
+                plot('model_1c', linear)
+        except: pass  
+
+
+
+def model_1b(period, future_c):
+    # y = mx + b
+    t = info.tick
+    def fx(x, p0, p1):
+        return p0*x + p1  
+    try:    
+        if t == half_test:
+            plot('model_1b', future_c[-1])
+        elif t == (half_test+period):
+            x=np.arange((half_test-period), half_test)
+            y=future_c[-period:]
+            p, v = curve_fit(fx, x, y) 
+            model = fx(t,p[0],p[1])
+            plot('model_1b', model)    
+    except: pass  
+
+
+
+def model_2(period,future_c):
+    # y = x^a + b
+    t = info.tick
+    def fx(x, p0, p1):
+        return x**p0 + p1    
+    if t < (half_test+200):         
+        try:    
+            if t == half_test:
+                plot('model_2', future_c[-1])
+            elif t == (half_test+period):
+                x=np.arange((half_test-period) , half_test)
+                y=future_c[-period:]
+                p, v = curve_fit(fx, x, y) 
+                model = fx(t,p[0],p[1])
+                plot('model_2', model)    
+        except: pass       
+    
+def model_2a(period,future_c):
+    # y = ax^b + cx + d
+    t = info.tick    
+    def fx(x, p0, p1, p2):
+        return p0*x**p1 + p2
+    try:    
+        if t == half_test:
+            plot('model_2a', future_c[-1])
+        elif t == (half_test+period):
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]
+            p, v = curve_fit(fx, x, y) 
+            model = fx(t, p[0], p[1], p[2]) 
+            plot('model_2a', model)    
+    except: pass   
+
+def model_2b(period,future_c):
+    # y = x^a + b
+    t = info.tick
+    def fx(x, p0, p1):
+        return x**p0 + p1   
+    try:     
+        if half_test == info.tick:
+            plot('model_2b', future_c[-1])
+        elif info.tick == (half_test+period):
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]
+            p, v = curve_fit(fx, x, y) 
+            model = fx(t, p[0], p[1]) + 2*future_c[-1]
+            plot('model_2b', model)    
+    except: pass
+    
+def model_2c(period,future_c):
+    # y = x^a + b (with amplified rise)
+    t = info.tick    
+    def fx(x, p0, p1):
+        return x**p0 + p1  
+    try:
+        if t == half_test:
+            plot('model_2c', future_c[-1])
+        elif t == (half_test+period):
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]
+            p, v = curve_fit(fx, x, y) 
+            model = fx(t, p[0], p[1])
+            if model > future_c[-1]:
+                model += 3*(model - future_c[-1])
+            plot('model_2c', model)    
+    except: pass       
+    
+def model_3(period,future_c):
+    # y = a*x^b
+    t = info.tick    
+    def fx(x, p0, p1):
+        return p0*x**p1    
+    try:    
+        if (half_test) == info.tick:
+            plot('model_3', future_c[-1])
+        elif info.tick == (half_test+period):
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]            
+            p, v = curve_fit(fx, x, y) 
+            model = fx(t, p[0], p[1])
+            plot('model_3', model)    
+    except: pass    
+
+def model_4(period,future_c):
+    # y = a*b^x
+    t = info.tick    
+    def fx(x, p0, p1):
+        return p0*p1**x    
+    try: 
+        if t == (half_test+period):
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]
+            p, v = curve_fit(fx, x, y) 
+            model = fx(t,p[0],p[1])
+            plot('model_4', model)    
+    except: pass 
+    
+def model_5(period,future_c):
+    # y = a*x^2 + b*x + c
+    t = info.tick    
+    def fx(x, p0, p1, p2):
+        return p0*x**2 + p1*x + p2    
+    try:
+        if (0<period <200) and (t == (half_test+period)):
+            if (half_test) < t < (half_test+400):          
+                x=np.arange((half_test-period) , half_test)
+                y=future_c[-period:]
+                p, v = curve_fit(fx, x, y) 
+                model = fx(t, p[0], p[1], p[2])
+                if abs(model-future_c[-1]) < 0.5*future_c[-1]:
+                    plot('model_5', model)    
+    except: pass 
+    
+def model_6(period,future_c):
+    # y = a*x^3 + b*x^2 + c*x + d
+    t = info.tick    
+    def fx(x, p0, p1, p2, p3):
+        return p0*x**3 + p1*x**2 + p2*x + p3  
+    try:        
+        if t == (half_test+period):
+            if (half_test+10) < t < (half_test+400):         
+                x=np.arange((half_test-period) , half_test)
+                y=future_c[-period:]
+                p, v = curve_fit(fx, x, y) 
+                model = fx(t, p[0], p[1], p[2], p[3])
+                if abs(model-future_c[-1]) < 5*future_c[-1]:
+                        #if model > future_c[-1]:  
+                        plot('model_6', model)    
+    except: pass      
+
+def model_6b(period,future_c):
+    # y = a*x^3 + b*x^2 + c*x + d
+    t = info.tick    
+    def fx(x, p0, p1, p2, p3, p4):
+        return p0*x**4 + p1*x**3 + p2*x**2 + p3*x + p4  
+    try:        
+        if t == (half_test+period):
+            if (half_test+10) < t < (half_test+400): 
+                x=np.arange((half_test-period) , half_test)
+                y=future_c[-period:]
+                p, v = curve_fit(fx, x, y) 
+                model = fx(t, p[0], p[1], p[2], p[3], p[4])
+                if abs(model-future_c[-1]) < 2*future_c[-1]:
+                        #if model > future_c[-1]:        
+                        plot('model_6b', model)    
+    except: pass    
+
+def model_6c(period,future_c):
+    # y = a*x^3 + b*x^2 + c*x + d
+    t = info.tick    
+    def fx(x, p0, p1, p2, p3, p4, p5):
+        return p0*x**5 + p1*x**4 + p2*x**3 + p3*x**2 + p4*x + p5  
+    try:        
+        if t == (half_test+period):
+            if (half_test+10) < t < (half_test+200): 
+                x=np.arange((half_test-period) , half_test)
+                y=future_c[-period:]
+                p, v = curve_fit(fx, x, y) 
+                model = fx(t, p[0], p[1], p[2], p[3], p[4], p[5])
+                if abs(model-future_c[-1]) < 10*future_c[-1]:
+                        #if model > future_c[-1]:        
+                        plot('model_6c', model)    
+    except: pass 
+   
+    
+def model_7(period,future_c):
+    # sin(x * freq + phase) * amplitude + offset
+    t = info.tick    
+    def fx(x, p0, p1, p2, p3):
+        return np.sin(x*p0 + p1) * p2 + p3
+    try:
+        if t == half_test:
+            plot('model_7', future_c[-1])
+        if t == (half_test+period):
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]    
+            p, v = curve_fit(fx, x, y) 
+            predict = np.sin(t*p[0] + p[1]) * p[2] + p[3]
+            plot('model_7', predict)    
+    except: pass      
+
+def model_8(period,future_c):
+    # y=a+b*sin(w*x)+c*cos(w*x)
+    t = info.tick    
+    def fx(x, p0, p1, p2, p3, p4):
+        return p0+p1*np.sin(p3*x) + p4*np.cos(p3*x)
+    try:
+        if t == half_test:
+            plot('model_8', future_c[-1])
+        if t == (half_test+period):
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]    
+            p, v = curve_fit(fx, x, y) 
+            model = p[0]+p[1]*np.sin(p[3]*t) + p[4]*np.cos(p[3]*t)
+            plot('model_8', model)    
+    except: pass    
+
+def linear_regression(period, future_c):
+    
+    x=np.arange((half_test-period) , half_test)
+    y=future_c[-period:]
+    if  half_test < info.tick < (half_test+period):
+        try:
+            slope, intercept, r_value, p_value, std_err = stats.linregress(x,y)
+            linear = slope*info.tick + intercept
+            plot('linear'+str(period), linear)
+        except: pass
+    if info.tick > (half_test+period):
+        plot('linear'+str(period), future_c[-1])
+        
+def trig_regression(period, future_c): 
+    # amplitude * sin(x * freq + phase) + offset + x^a
+    t = info.tick    
+    def fx(x, p0, p1, p2, p3, p4):
+        return p0*np.sin(x*p1 + p2) + p3*x + p4 
+    try:
+        if t == half_test:
+            pass
+            #plot(('trig_'+str(period)), future_c[-1])
+        if t > half_test:
+            x=np.arange((half_test-period) , half_test)
+            y=future_c[-period:]    
+            p, v = curve_fit(fx, x, y, p0=0.0001) 
+            model = fx(t, p[0], p[1], p[2], p[3], p[4])
+            #plot(('trig_'+str(period)), model)    
+            return (model - p[4] - p[3]*t)
+    except: pass    
+
+def tick():
+    
+    future_h, future_l, future_o, future_c = future()
+    alpha = []
+    for x in range(30,300,30):
+        #linear_regression(x, future_c)  
+        z = trig_regression(x, future_c)
+        alpha.append(z)
+    #log(alpha)    
+    try:
+        alpha = sum(alpha)+future_c[-1]
+        plot('trig', alpha)
+    except:pass
+    
+    
+    if info.tick <= half_test:
+        try:
+            plot('future_c', future_c[(info.tick+half_test)])
+        except: pass
+    '''
+    for x in range(2,half_test,2):
+        
+        model_1(x, future_c)       # y = mx + b
+        model_1b(x, future_c)       # y = mx + b        
+        model_2(x, future_c)          # y = x^a + b
+        model_2a(x, future_c)         # y = ax^b + cx +d       
+        model_2a(x, future_c)         # y = ax^b + cx +d    
+        model_2b(x, future_c)         # y = x^a + b        
+        model_2c(x, future_c)         # y = x^a + b     
+        model_3(x, future_c)       # y = a*x^b
+        model_4(x, future_c)       # y = a*b^x
+        model_5(x, future_c)        # y = a*x^2 + b*x + c
+        model_6(x, future_c)       # y = a*x^3 + b*x^2 + c*x + d
+        model_6b(x, future_c)       # y = a*x^4      
+        model_6c(x, future_c)       # y = a*x^5     
+        model_7(x, future_c)       # y = sin(x)
+        model_8(x, future_c)       # y = sin(x) + cos(x) 
+        
+    for x in range(2,half_test,2):
+        
+        model_1(x, future_l)       # y = mx + b
+        #model_1b(x, future_l)       # y = mx + b        
+        #model_2(x, future_l)          # y = x^a + b
+        #model_2a(x, future_l)         # y = ax^b + cx +d       
+        #model_2a(x, future_l)         # y = ax^b + cx +d    
+        #model_2b(x, future_l)         # y = x^a + b        
+        #model_2c(x, future_l)         # y = x^a + b     
+        #model_3(x, future_l)       # y = a*x^b
+        #model_4(x, future_l)       # y = a*b^x
+        #model_5(x, future_l)        # y = a*x^2 + b*x + c
+        #model_6(x, future_l)       # y = a*x^3 + b*x^2 + c*x + d
+        #model_6b(x, future_l)       # y = a*x^4
+        #model_6c(x, future_l)       # y = a*x^5    
+        #model_7(x, future_l)       # y = sin(x)
+        #model_8(x, future_l)       # y = sin(x)        
+        
+    for x in range(2,half_test,2):
+        
+        model_1(x, future_h)       # y = mx + b
+        #model_1b(x, future_h)       # y = mx + b        
+        #model_2(x, future_h)          # y = x^a + b
+        #model_2a(x, future_h)         # y = ax^b + cx +d       
+        #model_2a(x, future_h)         # y = ax^b + cx +d    
+        #model_2b(x, future_h)         # y = x^a + b        
+        #model_2c(x, future_h)         # y = x^a + b     
+        #model_3(x, future_h)       # y = a*x^b
+        #model_4(x, future_h)       # y = a*b^x
+        #model_5(x, future_h)        # y = a*x^2 + b*x + c
+        #model_6(x, future_h)       # y = a*x^3 + b*x^2 + c*x + d
+        #model_6b(x, future_h)       # y = a*x^4
+        #model_6c(x, future_h)       # y = a*x^5    
+        #model_7(x, future_h)       # y = sin(x)
+        #model_8(x, future_h)       # y = sin(x)   
+    '''
+    if (info.tick>half_test):
+        z=1 if ((half_test-info.tick)%(86400/info.interval)) else 0
+        plot('z', z, secondary=True)
+    if (info.tick+1)==info.max_ticks:
+        plot('z', -10, secondary=True)
