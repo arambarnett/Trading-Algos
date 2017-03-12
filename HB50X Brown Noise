@@ -1,0 +1,554 @@
+def banner():
+    
+    # Honey Badger v1.0 80X OPEN SOURCE Feb/17/2015
+    #
+    # litepresence
+    
+    '''
+    Your donations are appreciated and support development
+    BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME
+    '''
+
+    # UNTESTED LIVE - BETA - USE AT OWN RISK
+
+    '''
+    SUGGESTED LIVE TICK SIZE IS 1h
+    Please use tradewave forum for support
+    '''
+
+    # Trades 2, 3, 30, 55, 60, 90, 150 12h moving avereges
+    # (crossover and slope)
+    # Built for BTCUSD on 1h ticks
+    # 80X BTC return Dec 18 2011 to Feb 15 2015 on 12h tick
+    #
+    # *** Much thanks to Tradewave!
+    # This backtest engine is a BEAST! ***
+
+    # JAN 14th 2015 1h PWNED
+    # 191 BTCe
+    # 184 Bitstamp
+    # 203 Bitfinex
+    # 193 Coinsetter
+    # ----------------
+    # 193 average
+
+    # JAN 26th 2015 1h PWNED
+    # 294 BTCe
+    # 304 Bitstamp
+    # 305 Bitfinex
+    # 303 Coinsetter
+    # ----------------
+    # 301 average
+
+    # The Honey Badger is NASTY!
+
+    '''
+    DELUXE LOGIC PACKAGE AVAILABLE!
+
+    ~2000X BTC Dec 2011 to current
+
+    50k USD equity limit - 1 YEAR LEASE - 2 BTC
+
+    rpfpresence@gmail.com or tradewave private message
+    '''
+
+    # BEFORE INITIALIZING **ANY** BOT LIVE, RUN A BACKTEST UP TO
+    # THE MOST RECENT DATA, IN THE TICK SIZE YOU INTEND TO DEPLOY.
+    # WHATEVER THE BOT IS HOLDING AT THE END OF THE TEST,
+    # POSITION YOUR HOLDINGS **THE SAME** MANUALLY AT YOUR EXCHANGE
+    # BEFORE STARTING YOUR LIVE TRADER.
+
+    # TO ENSURE THE MOST SMOOTH ENTRANCE WITH **ANY** AUTOMATED TRADER,
+    # BEGIN TRADING LIVE **SHORTLY AFTER** THE BOT MAKES A TRADE IN
+    # BACKTEST MODE.
+
+    # WHEN THE LIVE BOT MAKES A TRADE, RUN A BACKTEST UP TO THE
+    # MOST RECENT DATA, IN THE SAME TICK SIZE AS YOU ARE TRADING
+    # TO CONFIRM THE CHANGE OF POSITION.
+
+import talib
+import time
+
+# Run a 3 month backest up to most recent candle in the interval you 
+# intend to run LIVE, enter 'KEYS' displayed at end of log below:
+
+
+KEY1 = 0 
+KEY2 = 0
+KEY3 = 0
+
+SIG = .7 # Volatility float(0 to 2)
+LOG = 0.07 # Percent daily loss/gain (-2 to 2)
+
+PAIR = info.primary_pair
+
+import numpy as np
+import math
+import talib
+
+def brown_noise(sig):
+
+    storage.brown = storage.get('brown', 0)   
+    storage.random_price = storage.get('random_price', data[PAIR].price)    
+
+    if sig > 0:
+        if storage.random_price > data[PAIR].price:
+            sig = sig*storage.random_price/float(data[PAIR].price)
+        
+        storage.brown = storage.brown + np.random.normal(0, sig)
+        return storage.brown
+    else:
+        return 0    
+
+def prices():
+
+    storage.prices = storage.get('prices', [])
+    
+    if info.tick == 0: 
+        n = 1
+        while n < 250:
+            brown = brown_noise(SIG)    
+            if float(data[PAIR].price) + brown > 0:
+                storage.random_price = float(data[PAIR].price) + brown
+            else:
+                storage.random_price = float(data[PAIR].price) - (brown/2)
+            storage.random_price = storage.random_price*math.pow(
+            (1 + float(LOG)/float(100)), (info.tick*info.interval/86400))
+            storage.prices.append(storage.random_price)
+            n+=1
+            
+    else:
+        brown = brown_noise(SIG)    
+        if float(data[PAIR].price) + brown > 0:
+            storage.random_price = float(data[PAIR].price) + brown
+        else:
+            storage.random_price = float(data[PAIR].price) - (brown/2)
+        storage.random_price = storage.random_price*math.pow(
+        (1 + float(LOG)/float(100)), (info.tick*info.interval/86400))
+        storage.prices.append(storage.random_price)  
+        storage.prices = storage.prices[-250:]
+
+
+
+def initialize():
+
+    storage.ratio = n = (43200 / info.interval)
+    storage.overbought = storage.get('overbought', 0)
+    storage.prev_mode = storage.get('prev_mode', 0)
+    storage.trades = storage.get('trades', 0)
+    storage.action = storage.get('action', 0)
+    storage.signal = storage.get('signal', 0)
+    storage.hold = storage.get('hold', 0)
+    storage.mode = storage.get('mode', 0)
+    storage.currency = storage.get('currency', 0)
+    storage.assets = storage.get('assets', 0)
+    storage.start_currency = storage.get('start_currency', 0)
+    storage.start_assets = storage.get('start_assets', 0)
+
+
+def instrument():
+
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    currency_code = ''.join(list((pair)[3:6]))
+    asset_code = ''.join(list((pair)[0:3]))
+    instrument_pair = asset_code + '_' + currency_code
+    storage.instrument = pairs[instrument_pair]
+    storage.currency = portfolio[currencies[currency_code]]
+    storage.assets = portfolio[currencies[asset_code]]
+    storage.currency_CODE = (currency_code).upper()
+    storage.asset_CODE = (asset_code).upper()
+
+
+def ma12h(period, depth):
+    
+    sim_close =  np.array(storage.prices)
+    sma = talib.MA(sim_close, timeperiod=period, matype=0)[(depth-1)]
+    return Decimal(sma)
+
+
+def chart():
+
+    mode = storage.mode
+    if storage.mode < 2:
+        mode = 1
+
+    plot('ma2', storage.ma2)
+    plot('ma30', storage.ma30)
+    plot('floor', storage.floor)
+    plot('moon', storage.moon)
+    plot('ma60', storage.ma60)
+    plot('ma90', storage.ma90)
+    plot('ma150', storage.ma150)
+    plot('resistance', storage.resistance)
+    
+    plot('mode', mode, secondary=True)
+    # 1 = green dragon
+    # 2 = capitulation
+    # 3 = red dragon
+    # 4 = cat bounce
+
+    buy = 0
+    sell = 0
+    if storage.signal == 1:
+        buy = 0.5
+    if storage.signal == -1:
+        sell = -0.5
+    plot('buy_signal', buy, secondary=True)
+    plot('sell_signal', sell, secondary=True)
+
+    if info.tick == 0:
+        plot('offset', -15, secondary=True)
+
+
+def indicators():
+
+    storage.ma2 = (ma12h(2, 0))
+    storage.ma30 = (ma12h(30, 0))
+    storage.ma55 = (ma12h(55, 0))
+    storage.ma60 = (ma12h(60, 0))
+    storage.ma90 = (ma12h(90, 0))
+    storage.ma150 = (ma12h(150, 0))
+    storage.ma2i = (ma12h(2, -1))
+    storage.ma30i = (ma12h(30, -1))
+    storage.ma55i = (ma12h(55, -1))
+    storage.ma60i = (ma12h(60, -1))
+    storage.ma90i = (ma12h(90, -1))
+    storage.ma150i = (ma12h(150, -1))
+
+    storage.floor = Decimal(0.75) * storage.ma55
+    storage.moon = Decimal(1.05) * storage.ma55
+    storage.resistance = (storage.ma30 + Decimal(2.8) *
+        (storage.ma30 - storage.ma60))
+
+    if info.tick == 0:
+        storage.start_currency = (Decimal(0.00001) +
+            storage.currency + storage.assets * storage.ma2)
+        storage.start_assets = (Decimal(0.00001) +
+            storage.assets + storage.currency / storage.ma2)
+        if storage.currency + storage.assets == 0:
+            log('Zero Starting Portfolio')
+            raise Stop()
+
+    storage.holding_assets = False
+    storage.holding_currency = False
+    if storage.currency > (storage.ma2 * Decimal(0.12)):
+        storage.holding_currency = True
+    if storage.assets > 0.12:
+        storage.holding_assets = True
+
+
+def mode_select():
+
+    if storage.hold <= 0:
+
+        ma2 = storage.ma2
+        ma30 = storage.ma30
+        ma60 = storage.ma60
+        ma90 = storage.ma90
+        ma150 = storage.ma150
+        ma30i = storage.ma30i
+        ma60i = storage.ma60i
+        ma90i = storage.ma90i
+        ma150i = storage.ma150i
+        resistance = storage.resistance
+
+        # Green Dragon Market
+        if ((ma30 > ma60) and
+            (ma60 > ma90) and
+            (ma90 > ma150) and
+            (ma2 > ma30) and
+            (ma30 > Decimal(1.002) * ma30i) and
+            (ma60 > Decimal(1.002) * ma60i) and
+                (ma90 > Decimal(1.002) * ma90i)):
+            storage.mode = 1
+            if ma2 > resistance:
+                storage.overbought = 4*43200
+            if storage.overbought > 0:
+                storage.overbought -= info.interval
+                storage.mode = -1
+
+        # Red Dragon Market
+        elif ((resistance < ma150) and
+             (ma2 < ma90) and
+             (ma2 < ma150) and
+             (ma150 < ma150i) and
+                (resistance < ma90)):
+            storage.mode = 3
+
+        # Not Dragon Market
+        else:
+            if storage.prev_mode == (3 or 4):
+                storage.mode = 4  # Cat Bounce
+            if abs(storage.prev_mode) == (1 or 2):
+                storage.mode = 2  # Capitulation
+
+
+def mode_3():
+
+    ma2 = storage.ma2
+    ma2i = storage.ma2i
+    ma30 = storage.ma30
+    signal = 0
+    if ma2 < storage.floor:
+        signal = 1
+    elif ma2 > storage.moon:
+        signal = -1
+    elif ((ma2 < ma2i) and
+            (ma2 < ma30) and
+            (ma2i > ma30)):
+                signal = -1
+    return signal
+
+
+def think():
+
+    action = 0
+    signal = 0
+    mode_select()
+    n = storage.ratio
+    ma2 = storage.ma2
+    hold = storage.hold
+    mode = storage.mode
+    ma30 = storage.ma30
+    ma60 = storage.ma60
+    ma90 = storage.ma90
+    ma90i = storage.ma90i
+    ma150 = storage.ma150
+    prev_mode = storage.prev_mode
+    holding_assets = storage.holding_assets
+    holding_currency = storage.holding_currency
+
+    if hold <= 0:
+
+        # MODE <2 - GREEN DRAGON
+        if mode == 0:
+            signal = 1
+            hold = 1
+            if holding_currency:
+                log('CRYPTO LONG')
+                action = 1
+                hold = 1
+        if mode == 1:
+            signal = 1
+            hold = 1
+            if holding_currency:
+                log('GREEN DRAGON')
+                action = 1
+                hold = 1
+        if mode == -1:
+            signal = -1
+            hold = 0
+            if holding_assets:
+                log('OVERBOUGHT')
+                action = -1
+                hold = 1
+
+        # MODE 2 - CAPITULATION
+        if ((mode == 2) and (prev_mode != 2)):
+            signal = -1
+            if holding_assets:
+                log('CAPITULATION')
+                action = -1
+                hold = 1
+        if mode == prev_mode == 2:
+            if ma2 < ma90:
+                signal = 1
+                # hold = 0
+                if holding_currency:
+                    log('DESPAIR')
+                    action = 1
+                    hold = 1
+            if ((ma2 > Decimal(1.1) * ma90) and
+                    (ma2 > ma60)):
+                signal = -1
+                # hold = 0
+                if holding_assets:
+                    log('FINAL RUN OF THE BULLS - B')
+                    action = -1
+                    hold = 2
+
+        # MODE 3 - RED DRAGON
+        if ((mode == 3) and (prev_mode != 3)):
+            signal = -1
+            hold = 0
+            if holding_assets:
+                log('RED DRAGON')
+                action = -1
+                hold = 5
+        if mode == prev_mode == 3:
+            signal_3 = mode_3()
+            if signal_3 == 1:
+                signal = 1
+                hold = 5
+                if holding_currency:
+                    log('PURGATORY')
+                    action = 1
+                    hold = 5
+            elif signal_3 == -1:
+                signal = -1
+                hold = 0
+                if holding_assets:
+                    log('DEEPER')
+                    action = -1
+                    hold = 1
+
+        # MODE 4 - CAT BOUNCE
+        if ((mode == 4) and (prev_mode != 4)):
+            signal = 1
+            hold = 0
+            if holding_currency:
+                log('HONEY')
+                action = 1
+                hold = 2
+        if mode == prev_mode == 4:
+            if ((ma2 < Decimal(1.05) * ma30) and
+                (ma2 > ma60) and
+                    (ma90 > Decimal(1.003) * ma90i)):
+                signal = -1
+                hold = 1
+                if holding_assets:
+                    log('KARMA')
+                    action = -1
+                    hold = 1
+            if ((ma2 < ma90) and
+                (ma90 < ma60) and
+                (ma90 < ma30) and
+                    (ma90 > ma90i)):
+                signal = 1
+                hold = 0
+                if holding_currency:
+                    log('GOLD')
+                    action = 1
+                    hold = 1
+        storage.hold = Decimal(hold) * 86400
+
+    storage.hold -= info.interval
+    storage.signal = signal
+    storage.action = action
+    storage.prev_mode = storage.mode
+
+
+def order():
+
+    sim_close =  np.array(storage.prices)
+    if storage.action == 1:
+        if storage.holding_currency:
+            try:
+                order = buy(info.primary_pair, price = sim_close[-1])
+                storage.trades += 1
+                email(order.price, 
+                    subject='**ALERT** HONEY BADGER SAYS: BUY OR CRY')
+            except TradewaveFundsError as e:
+                log('Not enough currency!')
+            except TradewaveInvalidOrderError as e:
+                log('Unable to place buy order: %s' % e.message)
+    if storage.action == -1:
+        if storage.holding_assets:
+            try:
+                order = sell(info.primary_pair, price = sim_close[-1])
+                storage.trades += 1
+                email(order.price, 
+                    subject='**ALERT** HONEY BADGER SAYS: FIAT TIME')                
+            except TradewaveFundsError as e:
+                log('Not enough assets!')
+            except TradewaveInvalidOrderError as e:
+                log('Unable to place buy order: %s' % e.message)
+    if abs(storage.action) == 1:
+        report()
+
+
+def report():
+
+    days = (info.current_time - info.begin) / 86400
+    trades = storage.get('trades', 0)
+    if trades == 0:
+        frequency = 0
+    else:
+        frequency = Decimal(days) / Decimal(trades)
+    start_date = time.strftime(
+        '%Y-%m-%d %H:%M:%S', time.localtime(info.begin))
+    potential_assets = storage.assets + storage.currency / storage.ma2
+    potential_currency = storage.currency + storage.assets * storage.ma2
+    start_assets = storage.start_assets
+    start_currency = storage.start_currency
+    ROI_currency = (100 * potential_currency / start_currency) - 100
+    ROI_assets = (100 * potential_assets / start_assets) - 100
+
+    log('Start Date: %s' % start_date)
+    log('Day: %s Trades: %s Frequency %.1f' % (days, trades, frequency))
+    log('%s %.1f / %.1f / %.1f ROI' %
+        (storage.currency_CODE, start_currency,
+         potential_currency, ROI_currency))
+    log('%s %.1f / %.1f / %.1f ROI' %
+        (storage.asset_CODE, start_assets, potential_assets, ROI_assets))
+    log('***************************************')
+
+
+def tick():
+    
+
+    prices()
+    sim_close =  np.array(storage.prices)
+    plot('random_price', sim_close[-1])    
+    
+    if info.tick == 0:
+        storage.hold = KEY1
+        storage.mode = storage.prev_mode = KEY2
+        storage.overbought = KEY3
+        
+
+    instrument()
+    indicators()
+    chart()
+    think()
+
+    if info.tick > 0:
+        order()
+
+    if 1:  # on/off COUNT DAYS
+        n = storage.ratio
+        if info.tick % (2 * n) == 0:
+            log(info.tick / (2 * n))
+            
+    if storage.hold < 0:
+        storage.hold = 0
+
+
+def stop():
+
+    bnh_gain = ((storage.start_assets * storage.ma2) /
+        storage.start_currency)
+    currency_gain = ((storage.currency + storage.assets * storage.ma2) /
+        storage.start_currency)
+    asset_gain = currency_gain / bnh_gain
+    if storage.assets*storage.ma2 > storage.currency:
+        holding = storage.asset_CODE
+    else:
+        holding = storage.currency_CODE
+
+    log('***************************************')
+    log('***************************************')
+    log('Honey Badger v1.0 80X by litepresence')
+    log('')
+    log('BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME')
+    report()
+    log('SIG: %s' % SIG)
+    log('LOG: %s' % LOG)
+    log('Buy and Hold Gain.: %.1fX' % bnh_gain)
+    log('Asset Gain........: %.1fX' % asset_gain)
+    log('Currency Gain.....: %.1fX' % currency_gain)
+    log('**** INITIALIZATION KEYS ****')
+    log('KEY1 = %s' % int(storage.hold))
+    log('KEY2 = %s' % storage.mode)
+    log('KEY3 = %s' % storage.overbought)
+    log('HOLDING %s' % holding)
