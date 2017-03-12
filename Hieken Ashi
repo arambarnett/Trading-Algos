@@ -1,0 +1,88 @@
+# litepresence 2015
+# Hieken Ashi numpy arrays without use of storage
+
+PERIOD = 100
+
+PAIR = info.primary_pair
+
+import numpy as np
+
+def Heiken_Ashi(H,L,O,C):
+    
+    # HLOC should all be numpy arrays of equal length
+    depth = len(O)
+    # HA close is just "hloc4", numpy makes that easy:
+    HA_close = (H+L+O+C)/4
+    # HA open is iterative average of previous open and previous close
+    HA_open = np.zeros(depth)
+    HA_open[-depth] = O[-depth]
+    for i in range((depth-1), 0, -1):
+        HA_open[-i] = (HA_open[-(i+1)] + HA_close[-(i+1)])/2
+    # The HA open might be highest high or lowest low   
+    HA_high = np.zeros(depth)
+    HA_low = np.zeros(depth)        
+    for i in range(depth):
+        HA_high[-i] = np.max([H[-i], HA_open[-i]])
+        HA_low[-i] = np.min([L[-i], HA_open[-i]])  
+    # Disgard 5 oldest elements for accuracy (HA_open iteration)
+    return (HA_high[-(depth-5):], 
+            HA_low[-(depth-5):], 
+            HA_open[-(depth-5):], 
+            HA_close[-(depth-5):])
+
+    
+def tick():
+    
+    O = data[PAIR].period(PERIOD,'open')              #"warmed up" open, high, low, and close
+    H = data[PAIR].period(PERIOD,'high')
+    L = data[PAIR].period(PERIOD,'low')  
+    C = data[PAIR].period(PERIOD,'close')     
+
+    HA_high, HA_low, HA_open, HA_close = Heiken_Ashi(H,L,O,C)
+
+    if 1: # 1 = Hieken Ashi ; 0 = Traditional Candles
+        plot('HA_open', HA_open[-1])
+        plot('HA_high', HA_high[-1])
+        plot('HA_low', HA_low[-1])
+        plot('HA_close', HA_close[-1])
+    else:
+        plot('open', O[-1])
+        plot('high', H[-1])
+        plot('low', L[-1])
+        plot('close', C[-1])        
+        
+    if info.tick <5:
+        log('********************')
+        log('O %.3f HA-O %.3f' % (O[-1], HA_open[-1]))
+        log('H %.3f HA-H %.3f' % (H[-1], HA_high[-1]))
+        log('L %.3f HA-L %.3f' % (L[-1], HA_low[-1]))
+        log('C %.3f HA-C %.3f' % (C[-1], HA_close[-1]))
+    
+
+    '''
+    
+    1. The Heikin-Ashi Close is simply an average of the open, 
+    high, low and close for the current period. 
+    
+    HA-Close = (Open(0) + High(0) + Low(0) + Close(0)) / 4
+    
+    2. The Heikin-Ashi Open is the average of the prior Heikin-Ashi 
+    candlestick open plus the close of the prior Heikin-Ashi candlestick. 
+    
+    HA-Open = (HA-Open(-1) + HA-Close(-1)) / 2 
+    
+    3. The Heikin-Ashi High is the maximum of three data points: 
+    the current period's high, the current Heikin-Ashi 
+    candlestick open or the current Heikin-Ashi candlestick close. 
+    
+    HA-High = Maximum of the High(0), HA-Open(0) or HA-Close(0) 
+    
+    4. The Heikin-Ashi low is the minimum of three data points: 
+    the current period's low, the current Heikin-Ashi 
+    candlestick open or the current Heikin-Ashi candlestick close.
+    
+    HA-Low = Minimum of the Low(0), HA-Open(0) or HA-Close(0) 
+    
+    http://stockcharts.com/help/doku.php?id=chart_school:chart_analysis:heikin_ashi
+    
+    '''
