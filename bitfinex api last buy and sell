@@ -1,0 +1,76 @@
+import time
+
+def initialize():
+    
+    log('timestamp 1: %s' % time.time())
+    
+    storage.reset(); log('storage.reset')
+    storage.trades_buy = 0
+    storage.trades_sell = 0
+    storage.trades_last = 0
+    storage.ticker_ask = 0
+    storage.ticker_bid = 0
+    storage.ticker_last = 0 
+    log('timestamp 2: %s' % time.time())
+def update_external_data():
+    
+    log('timestamp 3: %s' % time.time())
+    try: 
+        fetch_bitfinex_trades()
+    except: 
+        log('trades api failed')
+        pass
+    try:     
+        fetch_bitfinex_ticker()        
+    except: 
+        log('ticker api failed')        
+        pass        
+    log('timestamp 4: %s' % time.time())
+def fetch_bitfinex_trades():
+    log('timestamp 5: %s' % time.time())
+    api = "https://api.bitfinex.com/v1/trades/BTCUSD"
+    obj = get_json(api)
+    log((str(obj))[:250])
+    obj = obj[::-1]
+    
+    trades_buys = []
+    trades_sells = []
+    for i in range(len(obj)):
+        if obj[i]['type']=='buy':
+            trades_buys.append(obj[i])
+        elif obj[i]['type']=='sell':
+            trades_sells.append(obj[i])   
+    storage.trades_buy = float(trades_buys[-1]['price'])
+    storage.trades_sell = float(trades_sells[-1]['price'])
+    storage.trades_last = float(obj[-1]['price'])
+    log('timestamp 6: %s' % time.time())
+def fetch_bitfinex_ticker():
+    log('timestamp 7: %s' % time.time())
+    api = "https://api.bitfinex.com/v1/pubticker/BTCUSD"
+    obj = get_json(api)
+    log((str(obj))[:250]) 
+    
+    storage.ticker_bid = float(obj['bid'])
+    storage.ticker_ask = float(obj['ask'])
+    storage.ticker_last = float(obj['last_price'])
+    log('timestamp 8: %s' % time.time())
+def tick():
+    
+    if info.tick==0:
+    
+        z = 3
+        while z>0:
+            z-=1
+        
+            update_external_data()
+            
+            log('timestamp 9: %s' % time.time())
+            log('trade_buy...: %.3f (recent green buy market order)' % storage.trades_buy)
+            log('trade_sell..: %.3f (recent red sell market order)' % storage.trades_sell)
+            log('trade_last..: %.3f' % storage.trades_last)
+            log('ticker_ask..: %.3f (lowest on book asking)' % storage.ticker_ask)
+            log('ticker_bid..: %.3f (highest on book bidding)' % storage.ticker_bid)
+            log('ticker_last.: %.3f' % storage.ticker_last)
+            log('timestamp 10: %s' % time.time())    
+
+    
