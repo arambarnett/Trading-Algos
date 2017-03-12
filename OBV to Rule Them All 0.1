@@ -1,0 +1,180 @@
+# OBV to Rule Them All Indicator 0.1 by sungkhum for Tradewave
+# 
+# 1 hour BTC/USD on any exchange
+#
+# NOTE: This bot will not trade very often, but tries to only trade when the 
+# probability of a winning trade is high
+
+import talib
+import numpy as np
+OBV_AGGREGATION     = 3600
+TICK_SIZE           = info.interval
+INSTRUMENT          = pairs.btc_usd
+OBV_BUY_COUNT       = 5
+
+def on_balance_volume(aggregation, instrument):
+    
+    can_sell = False
+    can_buy = False
+    storage.obv_uptrend_count = storage.get('obv_uptrend_count', 0)
+    storage.obv_downtrend_count = storage.get('obv_downtrend_count', 0)
+    storage.obv = storage.get('obv', 0)
+    storage.the_number = storage.get('the_number', 0)
+    storage.current_price_slope = storage.get('current_price_slope', 0)
+    storage.current_obv_slope = storage.get('current_obv_slope', 0)
+    storage.price_slope_drop = storage.get('price_slope_drop', 0)
+    storage.obv_slope_drop = storage.get('obv_slope_drop', 0)
+    storage.obv_slope_increase = storage.get('obv_slope_increase', 0)
+    storage.price_slope_increase = storage.get('price_slope_increase', 0)
+    storage.steps_for_price_spike = storage.get('steps_for_price_spike', 0)
+    storage.counter_for_price_spike = storage.get('counter_for_price_spike', 0)
+    storage.wait_for_sar_uptrend = storage.get('wait_for_sar_uptrend', False)
+    storage.price_spike_sell_no_obv = storage.get('price_spike_sell_no_obv', False)
+    the_obv = np.array(storage.obv)
+
+
+    price_bitstamp = data(interval=OBV_AGGREGATION,exchange=exchanges.bitstamp).btc_usd.close
+    price_bitstamp_past = data(interval=OBV_AGGREGATION,exchange=exchanges.bitstamp).btc_usd[-1].close
+    price_btce = data(interval=OBV_AGGREGATION,exchange=exchanges.btce).btc_usd.close
+    price_btce_past = data(interval=OBV_AGGREGATION,exchange=exchanges.btce).btc_usd[-1].close
+    price_bitfinex = data(interval=OBV_AGGREGATION,exchange=exchanges.bitfinex).btc_usd.close
+    price_bitfinex_past = data(interval=OBV_AGGREGATION,exchange=exchanges.bitfinex).btc_usd[-1].close
+    price_coinsetter = data(interval=OBV_AGGREGATION,exchange=exchanges.coinsetter).btc_usd.close
+    price_coinsetter_past = data(interval=OBV_AGGREGATION,exchange=exchanges.coinsetter).btc_usd[-1].close
+    price = sum((Decimal(price_bitstamp), Decimal(price_btce), Decimal(price_bitfinex), Decimal(price_coinsetter))) / 4
+    price_past = sum((Decimal(price_bitstamp_past), Decimal(price_btce_past), Decimal(price_bitfinex_past), Decimal(price_coinsetter_past))) / 4
+    
+    plot('totalPrice', price)
+    
+    if info.tick == 0:
+        i = 2
+        get_price = 249
+        while get_price > 1:
+            
+            price_bitstamp = data(interval=OBV_AGGREGATION,exchange=exchanges.bitstamp).btc_usd[-(get_price)].close
+            price_bitstamp_past = data(interval=OBV_AGGREGATION,exchange=exchanges.bitstamp).btc_usd[-((get_price) - 1)].close
+            price_btce = data(interval=OBV_AGGREGATION,exchange=exchanges.btce).btc_usd[-(get_price)].close
+            price_btce_past = data(interval=OBV_AGGREGATION,exchange=exchanges.btce).btc_usd[-((get_price) - 1)].close
+            price_bitfinex = data(interval=OBV_AGGREGATION,exchange=exchanges.bitfinex).btc_usd[-(get_price)].close
+            price_bitfinex_past = data(interval=OBV_AGGREGATION,exchange=exchanges.bitfinex).btc_usd[-((get_price) - 1)].close
+            price_coinsetter = data(interval=OBV_AGGREGATION,exchange=exchanges.coinsetter).btc_usd[-(get_price)].close
+            price_coinsetter_past = data(interval=OBV_AGGREGATION,exchange=exchanges.coinsetter).btc_usd[-((get_price) - 1)].close
+            price = sum((Decimal(price_bitstamp), Decimal(price_btce), Decimal(price_bitfinex), Decimal(price_coinsetter))) / 4
+            price_past = sum((Decimal(price_bitstamp_past), Decimal(price_btce_past), Decimal(price_bitfinex_past), Decimal(price_coinsetter_past))) / 4
+            
+            the_volume_bitstamp = data(interval=OBV_AGGREGATION,exchange=exchanges.bitstamp).btc_usd[-(get_price)].volume
+            the_volume_btce = data(interval=OBV_AGGREGATION,exchange=exchanges.btce).btc_usd[-(get_price)].volume
+            the_volume_bitfinex = data(interval=OBV_AGGREGATION,exchange=exchanges.bitfinex).btc_usd[-(get_price)].volume
+            the_volume_coinsetter = data(interval=OBV_AGGREGATION,exchange=exchanges.coinsetter).btc_usd[-(get_price)].volume
+    
+            the_volume = sum((Decimal(the_volume_bitstamp), Decimal(the_volume_btce), Decimal(the_volume_bitfinex), Decimal(the_volume_coinsetter)))
+
+            
+            
+            storage.prev_close = price_past
+            #what_the_price = np.hstack((what_the_price,data.btc_usd.period(get_price, 'close')))
+            close = price
+            if close > storage.prev_close:
+                storage.the_number = storage.the_number + the_volume
+                the_obv = np.hstack((the_obv,storage.the_number))
+                the_obv = np.array(map(float, the_obv))
+            elif close < storage.prev_close: 
+                storage.the_number = storage.the_number - the_volume
+                the_obv = np.hstack((the_obv,storage.the_number))
+                the_obv = np.array(map(float, the_obv))
+            
+            get_price = get_price - 1
+        
+    the_volume_bitstamp = data(interval=OBV_AGGREGATION,exchange=exchanges.bitstamp).btc_usd.volume
+    the_volume_btce = data(interval=OBV_AGGREGATION,exchange=exchanges.btce).btc_usd.volume
+    the_volume_bitfinex = data(interval=OBV_AGGREGATION,exchange=exchanges.bitfinex).btc_usd.volume
+    the_volume_coinsetter = data(interval=OBV_AGGREGATION,exchange=exchanges.coinsetter).btc_usd.volume
+    
+    the_volume = sum((Decimal(the_volume_bitstamp), Decimal(the_volume_btce), Decimal(the_volume_bitfinex), Decimal(the_volume_coinsetter)))
+
+    close = price
+    storage.prev_close = price_past
+    
+
+    if close > storage.prev_close:
+        storage.the_number = storage.the_number + the_volume
+        the_obv = np.hstack((the_obv,storage.the_number))
+        the_obv = np.array(map(float, the_obv))
+        log('Price: %f Current HIGHER' % (price))
+        log('OBV: %f Volume: %f' % (the_obv[-1], the_volume))
+    elif close < storage.prev_close: 
+        storage.the_number = storage.the_number - the_volume
+        the_obv = np.hstack((the_obv,storage.the_number))
+        the_obv = np.array(map(float, the_obv))
+        log('Price: %f Current LOWER' % (price))
+        log('OBV: %f Volume: %f' % (the_obv[-1], the_volume))
+    else:
+        log('Price: %f Current SAME' % (price))
+        log('OBV: %f Volume: %f' % (the_obv[-1], the_volume))
+
+    close = data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')
+    cci = talib.CCI(close,close,close,timeperiod=20)
+
+    if cci[-1] >= 0:
+        signal = 500
+    if cci[-1] < 0:
+        signal = -500
+        
+    obv_lite = the_obv[-1]
+    storage.obv_lite_past = the_obv[-2]
+    #log(the_obv.size)
+    #log(the_obv[-200])
+    
+    
+    obv_ema_here = talib.MA(the_obv, timeperiod=13, matype=1)
+    plot('obv_ema', obv_ema_here[-1], secondary = True)
+    
+    storage.obv = the_obv.tolist()
+
+    plot('obvlite', obv_lite, secondary=True)    
+    
+    obv_ratio       = aggregation / info.interval
+
+        
+    
+        
+
+    return can_sell, can_buy
+
+
+def tick():
+    
+   
+    
+
+    #1h OBV to Rule Them All Indicator
+    if info.tick % (60 / (info.interval / 60)) == 0 or info.tick == 0:
+        
+        
+        
+
+        obv_can_sell, obv_can_buy = on_balance_volume(OBV_AGGREGATION, INSTRUMENT)
+    
+        if obv_can_sell and not storage.wait_for_sar_uptrend and portfolio.btc > 0.01:
+            try:
+                order = sell(pairs.btc_usd)
+            except TradewaveFundsError, e:
+                log('Not enough funds!')
+            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                log('Unable to place buy order: %s' % e.message)
+            storage.obv_uptrend_count = 0
+
+
+        elif obv_can_buy and portfolio.usd > 1:
+            try:
+                order = buy(pairs.btc_usd)
+            except TradewaveFundsError, e:
+                log('Not enough funds!')
+            except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+                log('Unable to place buy order: %s' % e.message)
+            price_diff = ((data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-1] - data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-OBV_BUY_COUNT]) / data(interval=OBV_AGGREGATION)[INSTRUMENT].warmup_period('close')[-OBV_BUY_COUNT]) * 100
+            log('Price Increase: %f' % (price_diff))
+                
+                
+                
+        
