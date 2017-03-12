@@ -1,0 +1,25 @@
+PAIR = info.primary_pair
+
+def tick():
+
+    std = data[PAIR].std(40)
+    ma = data[PAIR].ma(40)
+    upper = ma + (Decimal(2) * std)
+    lower = ma - (Decimal(2) * std)
+    price = float(data[PAIR].price)
+
+    if price > upper:
+      if portfolio.btc > 1.1:
+        sell(PAIR, 1)
+      elif portfolio.btc > 0.1:
+        sell(PAIR)
+
+    if price < lower:
+      if portfolio.usd > 1.1*price:
+        buy(PAIR, 1)
+      elif  portfolio.usd > 0.1*price:
+        buy(PAIR)
+    
+    plot('MA', ma)
+    plot('Upper', upper)
+    plot('Lower', lower)
