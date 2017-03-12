@@ -1,0 +1,94 @@
+import numpy as np
+PAIR = info.primary_pair
+
+
+def initialize():
+    
+    storage.reset(); log('storage.reset()')
+    storage.growth = storage.get('growth', 0)
+    storage.rate = storage.get('rate', 0)
+    
+def growth(period1, period2, aggregation): # period1<period2; both int>2
+
+    depth = int(aggregation/info.interval + 1)
+    ma1 = data[PAIR][-1].ma(period1)
+    ma1i = data[PAIR][-depth].ma(period1)
+    
+    ma2 = data[PAIR][-1].ma(period2)
+    ma2i = data[PAIR][-depth].ma(period2)
+   
+    
+    if info.tick == 0 :
+        storage.growth = ma2    
+
+    growth = storage.growth
+    cross = 0
+    if (ma1>ma2 and ma1i<ma2i) or (ma1>ma2 and ma1i<ma2i):
+        
+        storage.rate = ma2-ma2i
+        storage.growth = ma2
+    
+    elif ma1>ma2:
+            rate =  (ma2-ma2i)
+            storage.growth = storage.growth+storage.rate
+            if storage.growth < ma2:
+                storage.growth = ma2
+            else:
+                cross = 1
+            if storage.growth > ma1:
+                storage.growth = ma1
+                storage.rate = rate
+                cross = -1
+            if rate > storage.rate:
+                storage.rate = rate
+
+    elif ma1<ma2:
+            rate =  (ma2-ma2i)
+            storage.growth = storage.growth+storage.rate
+            if storage.growth > ma2:
+                storage.growth = ma2   
+            else:
+                cross = -1
+            if storage.growth < ma1:
+                storage.growth = ma1  
+                storage.rate = rate 
+                cross = 1
+            if rate < storage.rate:
+                storage.rate = rate    
+    
+    plot('ma1', ma1)
+    plot('ma2', ma2)
+    plot('growth', storage.growth)
+    plot('cross', cross, secondary=True)
+    if info.tick==0:
+        plot('z', 10, secondary=True)
+
+    return growth, cross
+
+def tick():
+
+    ma10 = data[PAIR].ma(10)
+    ma90 = data[PAIR].ma(90)
+    v = abs(ma10-ma90)/ma90
+
+    if v > 0.045:
+
+            
+        grow, cross = growth(5,26,43200)
+        
+        if portfolio.usd > 100:
+            if cross == 1:
+                buy(PAIR)
+        if portfolio.btc > 1:
+            if cross == -1:
+                sell(PAIR)
+
+    else:
+        grow, cross = growth(5,26,43200)
+        if ma90 > 1.005*float(data[PAIR][-2].ma(90)):
+            if portfolio.usd > 100:
+                    buy(PAIR)
+        if ma90 < 0.995*float(data[PAIR][-2].ma(90)):
+            if portfolio.btc > 1:
+                    sell(PAIR)
+            
