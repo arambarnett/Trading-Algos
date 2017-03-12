@@ -1,0 +1,85 @@
+
+'''
+talib AROON does not work on aggregated tradewave candles
+this custom definition solves that problem
+
+litepresence June 2014
+
+pair AROON with secondary RSI or MFI filter for best results
+
+period, interval of note:
+16, 43200
+
+'''
+
+PAIR = info.primary_pair
+
+def plot_lite_aroon(aroon_up, aroon_down, aroon_osc):
+    plot('liteAroonUp', aroon_up, secondary=True)
+    plot('liteAroonDown', aroon_down, secondary=True)
+    plot('liteAroonOsc', aroon_osc, secondary=True)   
+
+
+def lite_aroon(period, IN): #IN is the interval in seconds
+
+    if info.tick == 0:
+
+        storage.LL = []         
+        storage.HH = []
+        storage.LP = 0
+        storage.HP = 0
+        storage.LPP = 0
+        storage.HPP = 0
+
+    #Aroon Warmup
+    aroon_high = data(interval=IN)[PAIR].warmup_period('high')
+    aroon_low = data(interval=IN)[PAIR].warmup_period('low')
+
+    #Allow for use in different tick intervals
+    aggretate_tick = IN/info.interval
+
+    for z in range(period+1):
+        storage.HH.append(round(1000*aroon_high[-(z+1)])/1000) 
+    storage.HH = storage.HH[-period:]  
+    if aroon_high[-1] < max(storage.HH):
+        storage.HP = storage.HH.index(max(storage.HH)) + 1
+    else:
+        storage.HP = 0
+    if storage.HP > storage.HPP:
+        storage.HPP = Decimal(storage.HPP) + Decimal(1)/Decimal(aggretate_tick)   
+    if storage.HP < storage.HPP or (info.tick==0):
+        storage.HPP = storage.HP            
+
+    for z in range(period+1):
+        storage.LL.append(round(1000*aroon_low[-(z+1)])/1000) 
+    storage.LL = storage.LL[-period:]   
+    if aroon_low[-1] > min(storage.LL):
+        storage.LP = storage.LL.index(min(storage.LL)) + 1
+    else:
+        storage.LP = 0
+    if storage.LP > storage.LPP:
+        storage.LPP = Decimal(storage.LPP) + Decimal(1)/Decimal(aggretate_tick)   
+    if (storage.LP < storage.LPP) or (info.tick==0):
+        storage.LPP = storage.LP
+    lite_A_UP = 100-(storage.HPP*(100/period))        
+    lite_A_DOWN = 100-(storage.LPP*(100/period))  
+    lite_A_OSC = lite_A_UP - lite_A_DOWN
+
+    return (lite_A_UP, lite_A_DOWN, lite_A_OSC)
+
+def tick():
+
+    #now we can call the function for the Lite Aroon
+    (my_aroon_UP, my_aroon_DOWN, my_aroon_OSC
+        ) = lite_aroon(16, 43200)    
+    
+    plot_lite_aroon(my_aroon_UP, my_aroon_DOWN, my_aroon_OSC)
+    
+
+    
+    if my_aroon_UP > my_aroon_DOWN:
+        if portfolio.usd > 0.1*float(data[PAIR].price):
+            buy(PAIR)
+    else:
+        if portfolio.btc > 0.1:
+            sell(PAIR)
