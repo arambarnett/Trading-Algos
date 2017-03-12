@@ -1,0 +1,57 @@
+import talib as ta
+import math as ma
+import numpy as np
+
+PERIOD        = 10
+AGGREGATION   = 14400
+PAIR          = info.primary_pair
+RATIO         = int(ma.ceil(AGGREGATION/info.interval))
+
+def smooth(label, array):
+
+    if RATIO == 1:
+        return array
+    else:
+        smooth = '%s_smooth' % label
+        storage[smooth] = storage.get(smooth, [0,0])
+        if info.tick == 0:
+            storage[smooth][0] = list(array)
+            storage[smooth][1] = list(ta.MA(array, RATIO))
+        else:
+            storage[smooth][0].append(array[-1])
+            storage[smooth][0] = storage[smooth][0][-RATIO:]    
+            storage[smooth][1].append(sum(storage[smooth][0])/RATIO)
+            storage[smooth][1] = storage[smooth][1][-250:]    
+        return np.array(storage[smooth][1])
+
+def tick():
+
+    high   = data(interval=AGGREGATION)[PAIR].warmup_period('high') 
+    low    = data(interval=AGGREGATION)[PAIR].warmup_period('low')     
+    close  = data(interval=AGGREGATION)[PAIR].warmup_period('close')     
+
+    t = PERIOD
+    plus_di     = smooth('plus_di', (ta.PLUS_DI(high, low, close, timeperiod=t)))[-1]
+    plus_dm     = smooth('plus_dm', (ta.PLUS_DM(high, low, timeperiod=t)))[-1]
+    minus_di    = smooth('minus_di', (ta.MINUS_DI(high, low, close, timeperiod=t)))[-1]
+    minus_dm    = smooth('minus_dm', (ta.MINUS_DM(high, low, timeperiod=t)))[-1]
+    dx          = smooth('dx', (ta.DX(high, low, close, timeperiod=t)))[-1]
+    adx         = smooth('adx', (ta.ADX(high, low, close, timeperiod=t)))[-1]
+    adxr        = smooth('adxr',(ta.ADXR(high, low, close, timeperiod=t)))[-1]
+    
+    
+    plot('plus_DI', plus_di, secondary=True)
+    plot('plus_DM', plus_dm, secondary=True)
+    plot('minus_DI', minus_di, secondary=True)
+    plot('minus_DM', minus_dm, secondary=True)
+    plot('DX', dx, secondary=True)
+    plot('ADX', adx, secondary=True)
+    plot('ADXR', adxr, secondary=True)
+    
+    if info.tick == 0:
+        plot('_200', -200, secondary=True)
+    plot('25', 25, secondary=True)
+    plot('50', 50, secondary=True)
+    plot('75', 75, secondary=True)
+    
+    
