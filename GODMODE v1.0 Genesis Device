@@ -1,0 +1,296 @@
+'''
+GODMODE v1.0 Genesis Device
+
+http://i.imgur.com/RPHjkPD.png
+https://www.youtube.com/watch?v=BDWt1ypduGE
+
+port of Godmode "Tradition" Oscillator v3.1 
+by LazyBear, xSilas, & Ni6HTH4wK
+https://www.tradingview.com/v/oA3U7pok/8
+
+ft. port work by lewk & aspiramedia
+'''
+
+GODMODE             = [9,26,13]
+
+SHADE               = True
+PLOT_mfi_tci_rsi    = False
+PLOT_hlc3           = False
+PLOT_tci_precalc    = False
+PAIR                = info.primary_pair
+INTERVAL            = info.interval
+DEPTH               = 100 #array size
+
+import numpy as np
+import talib
+
+def Hlc3():
+    
+    '''Generage an array of (high+low+close)/3'''
+    High    = data(interval=INTERVAL)[PAIR].period(DEPTH,'high')
+    Low     = data(interval=INTERVAL)[PAIR].period(DEPTH,'low')
+    Close   = data(interval=INTERVAL)[PAIR].period(DEPTH,'close') 
+    hlc3 = (High + Low + Close)/3.0
+    if PLOT_hlc3:
+        plot('hlc3', hlc3[-1])    
+    return hlc3
+    
+def Tci():   
+    
+    '''tci(src) => ema((src - ema(src, n1)) / 
+            (0.025 * ema(abs(src - ema(src, n1)), n1)), n2)+50'''
+    hlc3 = Hlc3()    
+    ema1 = talib.MA(hlc3, timeperiod=GODMODE[0], matype=1)
+    ema2 = hlc3 - ema1
+    abs_ema2 = np.absolute(ema2)
+    ema3 = talib.MA(abs_ema2, timeperiod=GODMODE[0], matype=1) 
+    ema4 = ema2 / (0.025*ema3) 
+    tci = talib.MA(ema4, timeperiod=GODMODE[1], matype=1) + 50
+    if PLOT_tci_precalc:
+        plot('ema1', ema1[-1])
+        plot('ema2', ema2[-1], secondary=True)
+        plot('ema3', ema3[-1], secondary=True) 
+        plot('ema4', ema4[-1], secondary=True)
+    return tci
+
+def mfi_rsi():
+    
+    '''return TAlib mfi and rsi calculations'''
+    high    = data[PAIR].period(DEPTH, 'high')
+    low     = data[PAIR].period(DEPTH, 'low')
+    close   = data[PAIR].period(DEPTH, 'close')
+    volume  = data[PAIR].period(DEPTH, 'volume')
+    mfi     = talib.MFI(high, low, close, volume, timeperiod=GODMODE[2]) 
+    rsi     = talib.RSI(close, timeperiod = GODMODE[2])
+    return mfi, rsi
+
+def Godmode(): 
+
+    if info.tick == 0:  
+        log('GODMODE v1.0 Genesis Device')
+        if 0: # log params
+            log('%s %s %s' % (GODMODE[0], GODMODE[1], GODMODE[2])) 
+        
+    # perform tci, mfi, and rsi pre calculations
+    tci = Tci()
+    mfi, rsi = mfi_rsi()
+
+    # avg(tci(src),mf(src),rsi(src, n3))
+    tradition = (tci + mfi + rsi) / 3.0
+
+    wt1 = tradition   
+     
+    # wt2 = sma(wt1,6)
+    wt2 = talib.MA(wt1, timeperiod=6, matype=0)
+
+    #(ema((wt1-wt2)*2+50,n3)   
+    wt3 = (wt1-wt2)*2+50
+    wt3 = talib.MA(wt3, timeperiod=GODMODE[2], matype=1)     
+
+    # extended = wt2<20 ? wt2+5 : wt2>80 ? wt2-5 : na
+    
+    storage.extended = storage.get('extended', [50])
+    if wt2[-1] < 20:
+        storage.extended.append(0)
+    elif wt2[-1] > 80:
+        storage.extended.append(100)
+    else:
+        storage.extended.append(50)
+    
+    plot_godmode(wt1, wt2, wt3, np.array(storage.extended), mfi, tci, rsi)    
+        
+    return wt1, wt2, wt3, np.array(storage.extended), mfi, tci, rsi        
+
+def plot_godmode(wt1, wt2, wt3, extended, mfi, tci, rsi):
+
+    plot('omnipresent', wt1[-1], secondary=True)
+    plot('omniscient', wt2[-1], secondary=True)
+    plot('omnipotent', wt3[-1], secondary=True)
+    plot('GODMODE', extended[-1], secondary=True)
+    if PLOT_mfi_tci_rsi:        
+        plot('mfi', mfi[-1], secondary=True)
+        plot('tci', tci[-1], secondary=True)
+        plot('rsi', rsi[-1], secondary=True) 
+        
+    '''offsets, shading, and thresholds'''
+    plot('50', 50, secondary=True)
+    plot('20', 20, secondary=True)
+    plot('80', 80, secondary=True)
+    if info.tick ==0:
+        plot('Z1', 200, secondary=True)
+    minimum = min(data[PAIR].period(250, 'close'))  
+    maximum = max(data[PAIR].period(250, 'close'))
+    try: 
+        if info.tick == (info.max_ticks - 1):
+            plot('Z2', (minimum - 3.0*(maximum-minimum))) 
+    except: pass
+    if SHADE:
+        plot('omnipotent', 50, secondary=True)
+        if wt2[-1] < 20:
+            plot('GODMODE', 10, secondary=True)
+        if wt2[-1] > 80:
+            plot('GODMODE', 90, secondary=True)        
+
+def tick():
+    
+    # returns 7 numpy arrays:
+    omnipresent, omniscient, omnipotent, godmode, mfi, tci, rsi = Godmode()
+    
+########################################
+# REFERENCE and ALTERNATE CALCULATIONS #
+########################################
+
+'''    
+def Momentum():  
+    
+    #generage momentum and absolute value calculation for tsi
+    m = []
+    abs_m = []
+    for i in range(248,0,-1):
+        c1 = data(interval=INTERVAL)[PAIR].period(250,'close')[-i]
+        c2 = data(interval=INTERVAL)[PAIR].period(250,'close')[-(i+1)]
+        m.append(c1-c2)
+        abs_m.append(abs(c1-c2))
+    m = np.array(m)
+    abs_m = np.array(abs_m)
+    
+    if 0: #on/off plot momentum pre calculations
+        plot('c1', c1)    
+        plot('momentum', m[-1])  
+        plot('abs_m', abs_m[-1])
+    
+    return m, abs_m
+    
+def Tsi():
+    
+    
+    #True Strength Index = 100 x (Double Smoothed Momentum
+    #                        / Double Smoothed Absolute Momentum)
+    
+    momentum, abs_momentum = Momentum()
+    
+    m_ema1 = talib.MA(momentum, timeperiod=GODMODE[1], matype=1)
+    m_ema2 = talib.MA(m_ema1, timeperiod=GODMODE[2], matype=1)
+    
+    m_ema3 = talib.MA(abs_momentum, timeperiod=GODMODE[1], matype=1)
+    m_ema4 = talib.MA(m_ema3, timeperiod=GODMODE[2], matype=1)
+    
+    tsi = []
+    for i in range(100,0,-1):
+        tsi.append(100*m_ema2[-i]/m_ema4[-i])
+    tsi = np.array(tsi)
+    plot('tsi', tsi[-1])
+    return tsi    
+'''    
+        
+'''
+# wavetrend
+
+hlc3 = hlc_3()
+esa = talib.MA(hlc3, timeperiod=10, matype=1)
+d_array = []
+for i in range(250,0,-1):
+    d_array.append(abs(hlc3[-i] - esa[-i]))
+d_array = np.array(d_array)
+d = talib.MA(d_array, timeperiod=21, matype=1)
+
+ci = []
+for i in range(250,0,-1):
+    ci.append((hlc3[-i] - esa[-i]) / (0.015*d[-i]))
+ci = np.array(ci)
+tci = talib.MA(ci, timeperiod=21, matype=1)
+'''        
+
+'''
+# calculate godmode instead of tradition if multi exchange
+
+tsi = Tsi()    
+csi = (tsi[-1] + rsi[-1])/2
+# highest high and lowest low of period
+highest_high = max(data[PAIR].period(GODMODE[1], 'high'))
+lowest_low = min(data[PAIR].period(GODMODE[1], 'low'))
+close = data[PAIR].period(250, 'close')
+willy = 60*(close[-1] - highest_high) / (highest_high - lowest_low) + 80
+#godmode(src) => avg(tci(src),csi(src),mf(src),willy(src))    
+godmode = (tci[-1]+csi+mfi[-1]+willy)/4.0
+plot('godmode', godmode) 
+plot('csi', csi)
+plot('willy', willy)    
+'''  
+    
+'''
+ema3=[]
+for i in range(250,0,-1):
+    ema3.append(abs(ema2[-i]))
+ema3 = np.array(ema3)
+'''    
+    
+'''
+"WaveTrend [LazyBear]"
+n1 = input(10, "Channel Length")
+n2 = input(21, "Average Length")
+
+ap = hlc3 
+esa = ema(ap, n1)
+d = ema(abs(ap - esa), n1)
+ci = (ap - esa) / (0.015 * d)
+tci = ema(ci, n2)
+ 
+wt1 = tci
+wt2 = sma(wt1,4)
+'''    
+
+
+    
+    
+''' 
+# original godmode code 
+
+n1 = input(9, "Channel Length")
+n2 = input(26, "Average Length")
+n3 = input(13, "Short length")
+
+src = hlc3 
+
+
+tci(src) => ema((src - ema(src, n1)) / 
+            (0.025 * ema(abs(src - ema(src, n1)), n1)), n2)+50
+
+
+mf(src) => rsi(sum(volume * (change(src) <= 0 ? 0 : src), n3), 
+                sum(volume * (change(src) >= 0 ? 0 : src), n3))
+                
+http://stackoverflow.com/questions/7023317/what-does-the-question-mark-mean-in-this-function                
+
+willy(src) => 60 * (src - highest(src, n2)) / 
+                (highest(src, n2) - lowest(src, n2)) + 80
+
+csi(src) => avg(rsi(src, n3),tsi(src0,n1,n2)*50+50)
+
+godmode(src) => avg(tci(src),csi(src),mf(src),willy(src))
+
+tradition(src) => avg(tci(src),mf(src),rsi(src, n3))
+
+"if multiple exchanges is true, 
+then take average of godmode for 4 sources; 
+else take tradition of the primary pair"
+
+wt1 = multi?avg(godmode(src0),
+        godmode(src1),
+        godmode(src2),
+        godmode(src3),  
+        godmode(src4)):tradition(src0)
+        
+        
+wt2 = sma(wt1,6)
+
+extended = wt2<20 ? wt2+5 : wt2>80 ? wt2-5 : na
+
+plot(wt1, color=green)
+plot(wt2, color=red)
+plot(ema((wt1-wt2)*2+50,n3), color=aqua, style=area, transp=80, histbase=50)
+plot(extended, title="Caution!", color=yellow, style=circles, linewidth=2)
+
+hline(80)
+hline(20)
+'''
