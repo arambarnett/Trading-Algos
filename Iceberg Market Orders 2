@@ -1,0 +1,180 @@
+PAIR = info.primary_pair                                              
+
+LIVE = False                                                      
+try: end = info.end                                               
+except: LIVE = True    
+
+import random as r
+import time as t
+
+#####################################################################    
+#####################################################################
+''' ICEBERG CONTROLS '''    
+#####################################################################
+#only backtest two orders at a time else it logs too much
+ICEBERG_TEST        = True  #ON/OFF to test
+ICEBERG_SIMPLE      = False #True for simple version
+
+
+ICEBERG_QTY         = 2.5   # (2.5) max coexisting orders 
+ICEBERG_WAIT        = 60    # (60) sec delay between orders 
+ICEBERG_ATTEMPTS    = 180   # (180) cycle loop x times before fail
+ICEBERG_ALERT       = 100   # (100) send email after x attempts
+#####################################################################
+#####################################################################
+
+def market_ice_simple(action):
+    
+    # logical theory is the same in configurable version
+    while 1:
+        try:
+            action(PAIR, amount = 2, timeout=60)
+        except TradewaveFundsError: 
+            try:
+                portfolio.update()
+                action(PAIR)
+                break
+            except TradewaveInvalidOrderError:
+                break
+            except: pass
+        except: pass
+        if LIVE: t.sleep(60)
+    
+def market_ice_banner():
+    '''
+    market_ice()      
+    
+    litepresence was here Dec 2015 :D hat tip @ traderjoe, lewk
+    
+    GOALS: 
+    Effective as-is on any exchange with 250 btc; retail frequency.
+    Randomize Order size
+    Maintain coexisting orders on the books
+    Log Mean Execution Time and Price
+    Log Percent Slippage
+    Simple User interface
+    Don't Fail
+    
+    BETA NOT LIVE TESTED - PLEASE REPORT ERRORS *AND* SUCCESS
+    
+    Contribute to open source iceberg market orders:
+    
+    https://discuss.tradewave.net/t/looping-iceberg-order-strategy-one-order-at-a-time
+    '''
+
+def market_ice(action):  
+    
+    storage.potential_assets = float(
+        portfolio.btc + portfolio.usd/data[PAIR].price)
+    
+    ICEBERG_MIN  = storage.potential_assets / 40
+    if ICEBERG_MIN < 0.01: ICEBERG_MIN = 0.01
+    ICEBERG_MAX  = 1.5*ICEBERG_MIN 
+
+    if LIVE or ICEBERG_TEST:   
+        
+        last = float(data[PAIR].price)
+        ice_start_time = int(t.time())
+
+        # once at beginning of session announce start time and price
+        log('%s @ %.2f Deploying Iceberg Market Orders' % 
+            (ice_start_time, last))
+        
+        # create lists to calculate weighted execution
+        executions = []
+        subtotals = []
+        amounts = []    
+        
+        attempt = 0 # Make 180 Iceberg Attempts 
+        while attempt < ICEBERG_ATTEMPTS:  
+            
+            # send email alert on 100th attempt
+            if attempt == ICEBERG_ALERT:
+                email(last, subject='ALERT Tradewave ICEBERG ATTEMPT 100')
+    
+            # each order size random in range [1.5 to 2.5 BTC]
+            random_size = r.random()*(ICEBERG_MAX-ICEBERG_MIN) + ICEBERG_MIN
+            order_timeout = int(ICEBERG_QTY*ICEBERG_WAIT)
+            try:                                
+                # place iceberg order; allow up to 3 to overlap
+                order = action(PAIR, amount=random_size, 
+                    timeout=order_timeout)
+                # record ice order weighted time, subtotal, amount
+                amount = (order.amount).to_float()
+                price = float(order.price)
+                subtotals.append(amount*price)
+                executions.append(amount*t.time())
+                amounts.append(amount)
+                # if I don't have enough funds, place a final order    
+            except TradewaveFundsError: 
+                expire_icebergs = order_timeout - ICEBERG_WAIT + 1
+                if LIVE: t.sleep(expire_icebergs)
+                try: 
+                    portfolio.update()  # refresh holdings 
+                    order = action(PAIR) # place final order
+                    # record the final order weighted time, subtotal, amount
+                    amount = (order.amount).to_float()
+                    price = float(order.price)
+                    subtotals.append(amount*price)
+                    executions.append(amount*t.time())
+                    amounts.append(amount)
+                    break
+                except TradewaveInvalidOrderError as e:
+                    break # if final order is too small break
+                except: pass # if anything fails try final order again
+                # don't log anything because too much logging = fail
+            except: pass # if anything fails try iceberg again   
+            # don't log anything because too much logging = fail
+            if LIVE: t.sleep(ICEBERG_WAIT) # delay between orders    
+            attempt += 1
+            
+        # calculate and log weighted session time and price
+        coinz_moved = sum(amounts) #quantity
+        coinz_value = sum(subtotals) #value
+        execution_time = int(sum(executions)/coinz_moved) #weighted time
+        mean_price = sum(subtotals)/coinz_moved #weighted price
+        delta = mean_price - last # net slippage
+        if action == buy:  delta *= -1 # mean>last bad when buying
+        
+        # percent loss due to slippage
+        slippage = 100*(delta/last) 
+        
+        # anticipated slippage
+        atr = float(data[PAIR].atr(10))
+        std = float(data[PAIR].std(10))
+        volume = sum(data[PAIR].period(10,'volume'))/10
+        volatility = (atr+std)/2
+        wake = 100*storage.potential_assets/volume
+        par = -100*(volatility/last)/4
+
+        
+        # iceberg session in minutes
+        session_time = int((t.time() - ice_start_time)/60)
+        
+        # once at end of session, on one line, log results
+        log('market_ice() moved %.2f assets, valued @ %.2f <> ' % 
+                (coinz_moved, coinz_value) +
+            'in %s attempts, with duration of %s minutes, at unix %s <> ' % 
+                (attempt, session_time, execution_time) +
+            '[close, execution, delta]:[%.2f, %.2f, %.2f] <> ' % 
+                (last, mean_price, delta) +
+            '[wake, actual_slippage, anticipated_slippage]:[%.2f, %.3f, %.3f]' %
+                (wake, slippage, par))
+                
+    else:
+        # during backtesting place market orders lump sum
+        try:
+            action(PAIR) 
+        except:
+            log('Order Failed')   
+            pass  
+    
+def tick():
+    
+    if info.tick == 100:
+        market_ice(sell)
+    if info.tick == 500:
+        market_ice(buy)
+
+        
+ 
