@@ -1,0 +1,59 @@
+def update_external_data():
+    
+    storage.trollbox = storage.get('trollbox', [])
+    storage.trollbox = get_text('http://trollboxarchive.com/')
+    
+def remove_html_markup(s):
+    tag = False
+    quote = False
+    out = ""
+
+    for c in s:
+            if c == '<' and not quote:
+                tag = True
+            elif c == '>' and not quote:
+                tag = False
+            elif (c == '"' or c == "'") and tag:
+                quote = not quote
+            elif not tag:
+                out = out + c
+
+    return out
+
+def tick():
+    
+    '''
+    NOTE:
+    
+    In backtest mode http request can only be made in the first tick.
+    '''
+    
+    
+    if info.tick == 0:
+        
+        try:
+            trollbox_stripped = remove_html_markup(storage.trollbox)
+            
+            litecoin = storage.trollbox.count('litecoin')
+            bitcoin = storage.trollbox.count('bitcoin')
+            LTC = storage.trollbox.count('LTC')
+            BTC = storage.trollbox.count('BTC')  
+            moon = storage.trollbox.count('moon')
+            crash = storage.trollbox.count('crash')   
+            bloody = storage.trollbox.count('bloody')
+            flo = storage.trollbox.count('flo')
+            hodor = storage.trollbox.count('hodor')
+            hodl = storage.trollbox.count('hodl')
+            log('bitcoin: %s' % bitcoin)
+            log('litecoin: %s' % litecoin)   
+            log('BTC: %s' % BTC)
+            log('LTC: %s' % LTC)    
+            log('moon: %s' % moon)
+            log('crash: %s' % crash) 
+            log('bloody: %s' % bloody)
+            log('to da flo: %s' % flo)
+            log('hodor: %s' % hodor)
+            log('hodl: %s' % hodl)
+            log('*********************************')
+        except:
+            log('unable to get http request')
