@@ -1,0 +1,45 @@
+PAIR = info.primary_pair
+
+import numpy as np
+import talib as ta
+
+def hurst(p):  
+    tau = []; lagvec = []  
+    #  Step through the different lags  
+    for lag in range(2,20):  
+        #  produce price difference with lag  
+        pp = np.subtract(p[lag:],p[:-lag])  
+        #  Write the different lags into a vector  
+        lagvec.append(lag)  
+        #  Calculate the variance of the differnce vector  
+        tau.append(np.sqrt(np.std(pp)))  
+    #  linear fit to double-log graph (gives power)  
+    m = np.polyfit(np.log10(lagvec),np.log10(tau),1)  
+    # calculate hurst  
+    hurst = (m[0]*2)  
+    # plot lag vs variance  
+    #py.plot(lagvec,tau,'o'); show()  
+    return hurst  
+    
+def tick():
+
+    close = data[PAIR].period(250, 'close')
+    
+    ma30 = ta.MA(close, 30)
+    ma60 = ta.MA(close, 60)
+    ma90 = ta.MA(close, 90)
+    ma150 = ta.MA(close, 150)
+    
+    plot('ma30', ma30[-1])
+
+    hurst1 = hurst(ma30)
+    hurst2 = hurst(ma60)
+    hurst3 = hurst(ma90)
+    hurst4 = hurst(ma150)
+    
+    plot('hurst1', hurst1, secondary=True)
+    plot('hurst2', hurst2, secondary=True)
+    plot('hurst3', hurst3, secondary=True)
+    plot('hurst4', hurst4, secondary=True)   
+    
+    plot('log_close', np.log10(close[-1]))
