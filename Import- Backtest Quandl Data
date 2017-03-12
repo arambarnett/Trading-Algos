@@ -1,0 +1,341 @@
+
+# litepresence  -  March 2015
+
+'''
+Import *.csv from Quandl 
+
+https://www.quandl.com
+
+HLOC + Volume + TAlib 90/20 SMA's + Sample Trade Logic
+
+Open Source
+'''
+##################################################################
+##################################################################
+'''
+HOW TO IMPORT MOAR DATA!
+
+Columns Heads must be in order:
+
+UNIX LOW HIGH OPEN CLOSE VOLUME
+
+Time must be ascending.
+No NaN's or 0's in dataset.
+
+Use local spreadsheet editor to crop down sheet
+Convert Unix by making one cell (ie G1) "1/1/1970", then:
+=(A2 - $G$1)*86400
+then use formula to create a column of Unix Dates
+then copy "paste special" "number only" to make formula free column of unix
+
+Then crop down columns heading, must be in order:
+
+UNIX LOW HIGH OPEN CLOSE VOLUME
+
+Then copy paste to google sheets
+Then File >>> Publish To Web  >>> Sheet 1 Only
+Then select all, right click... 
+"Protect Range" "Set Permissions" "only you can edit" 
+
+Then add a SECURITY to the list below with the correct SHEET_KEY
+Adjust SPEED and TICKS as needed.
+
+Post your new DATASETS and SECURITY Parameters here:
+
+https://discuss.tradewave.net/t/import-csv-hlocv-to-backtest-via-google-sheets
+
+'''
+##################################################################
+##################################################################
+#
+# Your donations are appreciated and help support development:
+# BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME
+#
+##################################################################
+##################################################################
+
+'''SELECT SECURITY AND ADJUST BACKTEST PERIOD'''
+
+SECURITY = 6
+
+# 1 - LTCUSD
+# 2 - DDD 3D Systems
+# 3 - QCOR Questcor Pharmaceuticals
+# 4 - MTGOX pre 2012
+# 5 - EBIX
+# 6 - LTCBTC 
+# 7 - Polycom Inc
+
+##################################################################
+##################################################################
+
+'''SECURITY Parameters'''
+
+if SECURITY == 1:
+    # LTCUSD Daily Candles
+    # Backtest Period 7/13/2012 - 9/11/2014
+    # Data Period 7/13/2012 - 9/11/2014
+    SHEET_KEY = '1lTQXWQGGuHWVerI2w68Tsu9Druhfjy-P7weLzhOnX_E'
+    BEGIN = 1342137600  # 12/17/2011 23:00:00    
+    SPEED = 1
+    TICKS = 1568
+    SYMBOL = 'LTCUSD'
+    
+if SECURITY == 2:    
+    # DDD 3D Systems 
+    # Data Period 1/1/2007 to 3/15/2015
+    # Backtest Period 12/17/2011 to 3/15/2015
+    SHEET_KEY = '1lyZAaBJTnTnugAqwPm_7ZN1Gt8OE3OZY_f5hS_RNIP0'
+    BEGIN = 1167782400 # 1/1/2007
+    SPEED = 2.6
+    TICKS = 3000
+    SYMBOL = 'DDD'    
+    
+if SECURITY == 3:    
+    # QCOR Questcor Pharmaceuticals 
+    # Data Period 1/1/2007 to 8/14/2014
+    # Backtest Period 12/17/2011 to 3/15/2015
+    SHEET_KEY = '1G-GAuiIjWiPzSfPuS_92RVdrNdO31XL6R9I8MvWU9N0'
+    BEGIN = 1167782400 # 1/1/2007
+    SPEED = 2.5
+    TICKS = 3000
+    SYMBOL = 'QCOR'     
+    
+if SECURITY == 4:    
+    # MTGOX 
+    # Data Period 7/17/2010 to 1/1/2013
+    # Backtest Period 7/17/2012 to 1/1/2015
+    SHEET_KEY = '1zgdZrHiw13MexVHgMP1jakjbHccg1d_VdXjP0VJ5Efc'
+    BEGIN = 1279324800 # 7/17/2010
+    SPEED = 1
+    TICKS = 2000
+    SYMBOL = 'MTGOXpre2012' 
+
+if SECURITY == 5:    
+    # EBIX Ebix Inc.
+    # Data Period 1/1/2005 to 3/15/2015
+    # Backtest Period 12/17/2011 to 3/15/2015
+    SHEET_KEY = '1ZEtH3xCFPAwGSKfklPfiocoQ6MIB8L9Y2jGDpLiW5E4'
+    BEGIN = 1104710400 # 1/1/2005
+    SPEED = 3.5
+    TICKS = 4000
+    SYMBOL = 'EBIX' 
+    
+if SECURITY == 6:
+    # LTCBTC Daily Candles
+    # Backtest Period 7/15/2012 - 3/15/2015
+    # Data Period 7/15/2012 - 3/15/2015
+    SHEET_KEY = '1N4Yn-jb-niHrmZ-dL36sYn6p0C_aaY3_OQcj5p9DITI'
+    BEGIN = 1342310400  # 7/15/2012  
+    SPEED = 1
+    TICKS = 2000
+    SYMBOL = 'LTCBTC'    
+    
+if SECURITY == 7:
+    # Polycom Inc Daily Candles
+    # Backtest Period 12/17/2011 - 3/15/2015
+    # Data Period 1/1/1997 - 12/06/2006
+    SHEET_KEY = '1BcpXddLIppKJIvmx2GhezPEtoT7mNoExmN5xaJG38LE'
+    BEGIN = 852163200  # 1/1/19977
+    SPEED = 4
+    TICKS = 5000
+    SYMBOL = 'PLCM'    
+
+import numpy as np
+import talib
+
+def fetch_sheet(key):
+    obj = get_json('https://spreadsheets.google.com/feeds/list/%s'
+                   '/od6/public/values?alt=json' % SHEET_KEY)
+    entries = obj['feed']['entry']
+    result = {}
+    for entry in entries:
+        cols = [k.split('gsx$')[1] for k in entry.keys() if 'gsx$' in k]
+        for col in cols:
+            value = entry['gsx$%s' % col].values()[0]
+            if col in result:
+                result[col].append(value)
+            else:
+                result[col] = [value]
+    return result
+
+def update_external_data():
+    try:
+        storage.sheet = fetch_sheet(SHEET_KEY)
+    except TradewaveHTTPError, e:
+        log('Problem fetching sheet: %s' % e)
+
+def initialize():
+    storage.sheet = {}
+    
+def sheet_to_lists():
+    
+    if info.tick == 0:
+        n = 6
+        for column, vals in storage.sheet.items():
+            a = 'column' + str(n)
+            storage[a] = vals
+            n-=1
+        # D-C-F-A-B-E ???? WTF, please explain!            
+        # manually put columns in same order as original sheet
+        a = storage.column1 #open
+        b = storage.column2 #close
+        c = storage.column3 #low
+        d = storage.column4 #unix
+        e = storage.column5 #volume
+        f = storage.column6 #high
+        storage.column1 = [int(i) for i in d] #unix
+        storage.column2 = [float(i) for i in c] #low
+        storage.column3 = [float(i) for i in f] #high
+        storage.column4 = [float(i) for i in a] #open
+        storage.column5 = [float(i) for i in b] #close
+        storage.column6 = [float(i) for i in e] #volume
+
+def candles():
+    
+    storage.lows = []
+    storage.highs = []
+    storage.opens = []
+    storage.closes = []
+    storage.volumes = []
+    z = 0
+    while z < TICKS:
+        storage.lows.append([])
+        storage.highs.append([])
+        storage.opens.append([])
+        storage.closes.append([])
+        storage.volumes.append([])
+        for i in range(len(storage.column1)):
+            if storage.column1[i] >= (BEGIN + 
+                    info.interval*z*SPEED):
+                if storage.column1[i] < (BEGIN + 
+                        info.interval*(z+1)*SPEED):
+                    storage.lows[z].append(storage.column2[i])
+                    storage.highs[z].append(storage.column3[i])
+                    storage.opens[z].append(storage.column4[i])
+                    storage.closes[z].append(storage.column5[i])
+                    storage.volumes[z].append(storage.column6[i])
+        z+=1
+def numpy_hlocv():
+    
+    storage.data_low = storage.get('data_low', 0)
+    storage.data_high = storage.get('data_high', 0)
+    storage.data_open = storage.get('data_open', 0)
+    storage.data_close = storage.get('data_close', 0)    
+    storage.data_volume = storage.get('data_volume', 0) 
+    # a[i][j] would give you the jth element from the ith row.  
+    try:
+        storage.data_low = storage.lows[info.tick][0]
+    except: pass
+    try:
+        storage.data_high = storage.highs[info.tick][0]
+    except: pass        
+    try:
+        storage.data_open = storage.opens[info.tick][0]
+    except: pass        
+    try:
+        storage.data_close = storage.closes[info.tick][0]
+    except: pass
+    try:
+        storage.data_volume = storage.volumes[info.tick][0]
+    except: pass
+
+    plot((SYMBOL+'_high'), storage.data_high)
+    plot((SYMBOL+'_low'), storage.data_low)
+    plot((SYMBOL+'_open'), storage.data_open)
+    plot((SYMBOL+'_close'), storage.data_close)    
+    plot((SYMBOL+'_volume'), storage.data_volume, secondary=True)     
+    
+    storage.sim_high = storage.get('sim_high', [])
+    storage.sim_low = storage.get('sim_low', [])
+    storage.sim_open = storage.get('sim_open', [])
+    storage.sim_close = storage.get('sim_close', [])    
+    storage.sim_volume = storage.get('sim_volume', [])
+    
+    storage.sim_high.append(storage.data_high)
+    storage.sim_low.append(storage.data_low)
+    storage.sim_open.append(storage.data_open)
+    storage.sim_close.append(storage.data_close)
+    storage.sim_volume.append(storage.data_volume)
+    
+    storage.sim_high = storage.sim_high[-250:]
+    storage.sim_low = storage.sim_low[-250:]
+    storage.sim_open = storage.sim_open[-250:]
+    storage.sim_close = storage.sim_close[-250:]
+    storage.sim_volume = storage.sim_volume[-250:]    
+    
+    storage.sim_high = [float(x) for x in storage.sim_high]
+    storage.sim_low = [float(x) for x in storage.sim_low]
+    storage.sim_open = [float(x) for x in storage.sim_open]
+    storage.sim_close = [float(x) for x in storage.sim_close]
+    storage.sim_volume = [float(x) for x in storage.sim_volume]      
+
+def test():
+    if info.tick == 0:
+        # Check to make sure columns match google sheet
+        log(storage.column1[0:5])
+        log(storage.column2[0:5])
+        log(storage.column3[0:5])
+        log(storage.column4[0:5])
+        log(storage.column5[0:5])        
+        log(storage.column6[0:5])  
+        log(len(storage.column1))
+        log(len(storage.column2))
+        log(len(storage.column3))
+        log(len(storage.column4))
+        log(len(storage.column5))
+        log(len(storage.column6)) 
+
+def tick():
+    
+    ##################################################
+    '''      Import Quandl Dataset                 '''
+    ##################################################
+    sheet_to_lists()
+    if info.tick == 0:
+        log('Max Ticks: %s' % info.max_ticks)
+        candles()
+    numpy_hlocv()
+    test()
+    ##################################################
+
+    ##################################################
+    ''' sim_close etc. are numpy arrays length 250 '''
+    ''' use sim_close[-1] for limit orders         '''
+    ''' use sim_close for input to TAlib functions '''
+    ##################################################    
+    sim_high = np.array(storage.sim_high)
+    sim_low = np.array(storage.sim_low)
+    sim_open = np.array(storage.sim_open)
+    sim_close = np.array(storage.sim_close)
+    sim_volume = np.array(storage.sim_volume)    
+    ##################################################
+    
+    
+    # PUT YOUR TRADING CODE BELOW:
+    ##################################################
+    '''      Sample Trading Code                   '''
+    ##################################################
+    ma_short = talib.MA(sim_close, timeperiod=10, matype=0)[-1]
+    ma_long = talib.MA(sim_close, timeperiod=90, matype=0)[-1]  
+    
+    if ma_short != ma_short:
+        ma_short = sim_close[-1]
+    if ma_long != ma_long:
+        ma_long = sim_close[-1]
+
+    if ma_short > ma_long:
+        if portfolio.usd > 1:
+            buy(info.primary_pair, price = sim_close[-1])
+            
+    if ma_short < ma_long:
+        if portfolio.btc > 1:
+            sell(info.primary_pair, price = sim_close[-1])
+
+    plot('short', ma_short)
+    plot('long', ma_long)    
+    ##################################################    
+
+
+       
+
