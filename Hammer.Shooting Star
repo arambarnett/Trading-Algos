@@ -1,0 +1,76 @@
+
+PAIR = info.primary_pair
+def star_hammer():
+    
+    h = float(data[PAIR].high)
+    l = float(data[PAIR].low)
+    o = float(data[PAIR].open)
+    c = float(data[PAIR].close)
+
+    trend = data[PAIR][0].ma(2) - data[PAIR][-1].ma(2)
+    atr = data[PAIR].atr(30)
+    current_range = h-l
+    top_wick = h - max(o,c)
+    bottom_wick = min(o,c) - l
+    main_body = abs(o-c)
+    
+    TREND       = 0
+    VOLATILITY  = 1
+    SMALL_WICK  = 0.5  #usually 0.25
+    BIG_WICK    = 1 #usually 2.0
+    
+    star = False
+    #Bullish Trend
+    if trend > TREND:
+        #Volatile Candle
+        if current_range > atr*VOLATILITY:
+            #Closed Down
+            if c < o:
+                #Big top wick
+                if top_wick > BIG_WICK*main_body:
+                    #Small bottom wick
+                    if bottom_wick < SMALL_WICK*main_body:
+                        star = True
+    hammer = False
+    #Bearish Trend
+    if trend < TREND:
+        #Volatile Candle
+        if current_range > atr*VOLATILITY:
+            #Closed up
+            if c > o:
+                #small top wick
+                if top_wick < SMALL_WICK*main_body:
+                    #big bottom wick
+                    if bottom_wick > BIG_WICK*main_body:
+                        hammer = True                    
+                        
+                        
+    return star, hammer
+                
+def tick():
+
+    star, hammer = star_hammer()
+    
+    if star:
+        try:
+            sell(info.primary_pair)
+        except: pass
+    if hammer:
+        try:
+            buy(info.primary_pair)
+        except: pass
+    
+    if info.tick ==0: plot('z', 10, secondary=True)
+    if star: 
+        log('star')
+        plot('star', -1, secondary=True)
+    else:
+        plot('star', 0, secondary=True)
+    if hammer: 
+        log('hammer')
+        plot('hammer', 1, secondary=True)
+    else:
+        plot('hammer', 0, secondary=True)        
+    plot('high', data[PAIR].high)
+    plot('low', data[PAIR].low)
+    plot('open', data[PAIR].open)
