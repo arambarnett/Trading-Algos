@@ -1,0 +1,98 @@
+'''
+Candlestick Pattern Recognition Indicators
+
+https://discuss.tradewave.net/t/candlestick-pattern-recognition-indicators-ie-dragonfly-doji/167
+
+Modified by lewk to use the talib abstract Function API.
+
+[-1] included on each to convert array to "last" value
+max() and [:-5] could be used to see if any of last 5 were '1' output 
+int() function used to convert int32 data to integers for plotting
+/100 because default talib outputs are 0 or 100
+Default parameters used where "penetration" is required input
+
+Most Return:  Binary [0, 1] or Ternary [-1, 0, 1] 
+Hikkaki Returns:  Quinary [-2, -1, 0, 1, 2] 
+'''
+
+from talib.abstract import Function
+
+PATTERNS = [
+    '2CROWS',            # Two Crows
+    '3BLACKCROWS',       # Three Black Crows
+    '3INSIDE',           # Three Inside Up/Down
+    '3LINESTRIKE',       # Three-Line Strike 
+    '3OUTSIDE',          # Three Outside Up/Down
+    '3STARSINSOUTH',     # Three Stars In The South
+    '3WHITESOLDIERS',    # Three Advancing White Soldiers
+    'ABANDONEDBABY',     # Abandoned Baby
+    'ADVANCEBLOCK',      # Advance Block
+    'BELTHOLD',          # Belt-hold
+    'BREAKAWAY',         # Breakaway
+    'CLOSINGMARUBOZU',   # Closing Marubozu
+    'CONCEALBABYSWALL',  # Concealing Baby Swallow
+    'COUNTERATTACK',     # Counterattack
+    'DARKCLOUDCOVER',    # Dark Cloud Cover
+    'DOJI',              # Doji
+    'DOJISTAR',          # Doji Star
+    'DRAGONFLYDOJI',     # Dragonfly Doji
+    'ENGULFING',         # Engulfing Pattern
+    'EVENINGDOJISTAR',   # Evening Doji Star
+    'EVENINGSTAR',       # Evening Star
+    'GAPSIDESIDEWHITE',  # Up/Down-gap side-by-side white lines
+    'GRAVESTONEDOJI',    # Gravestone Doji
+    'HAMMER',            # Hammer
+    'HANGINGMAN',        # Hanging Man
+    'HARAMI',            # Harami Pattern
+    'HARAMICROSS',       # Harami Cross Pattern
+    'HIGHWAVE',          # High-Wave Candle
+    'HIKKAKE',           # Hikkake Pattern
+    'HIKKAKEMOD',        # Modified Hikkake Pattern
+    'HOMINGPIGEON',      # Homing Pigeon
+    'IDENTICAL3CROWS',   # Identical Three Crows
+    'INNECK',            # In-Neck Pattern
+    'INVERTEDHAMMER',    # Inverted Hammer
+    'KICKING',           # Kicking
+    'KICKINGBYLENGTH',   # Kicking - bull/bear determined by the longer marubozu
+    'LADDERBOTTOM',      # Ladder Bottom
+    'LONGLEGGEDDOJI',    # Long Legged Doji
+    'LONGLINE',          # Long Line Candle
+    'MARUBOZU',          # Marubozu
+    'MATCHINGLOW',       # Matching Low
+    'MATHOLD',           # Mat Hold
+    'MORNINGDOJISTAR',   # Morning Doji Star
+    'MORNINGSTAR',       # Morning Star
+    'ONNECK',            # On-Neck Pattern
+    'PIERCING',          # Piercing Pattern
+    'RICKSHAWMAN',       # Rickshaw Man
+    'RISEFALL3METHODS',  # Rising/Falling Three Methods
+    'SEPARATINGLINES',   # Separating Lines
+    'SHOOTINGSTAR',      # Shooting Star
+    'SHORTLINE',         # Short Line Candle
+    'SPINNINGTOP',       # Spinning Top
+    'STALLEDPATTERN',    # Stalled Pattern
+    'STICKSANDWICH',     # Stick Sandwich
+    'TAKURI',            # Takuri (Dragonfly Doji with very long lower shadow)
+    'TASUKIGAP',         # Tasuki Gap
+    'THRUSTING',         # Thrusting Pattern
+    'TRISTAR',           # Tristar Pattern
+    'UNIQUE3RIVER',      # Unique 3 River
+    'UPSIDEGAP2CROWS',   # Upside Gap Two Crows
+    'XSIDEGAP3METHODS',  # Upside/Downside Gap Three Methods
+]
+PATTERN_WINDOW = 250
+
+
+def tick():
+    candle = data[info.primary_pair]
+
+    O = candle.warmup_period('open')
+    H = candle.warmup_period('high')
+    L = candle.warmup_period('low')
+    C = candle.warmup_period('close')
+
+    for pattern in PATTERNS:
+        func = Function('CDL%s' % pattern)
+        output = func(dict(open=O, high=H, low=L, close=C))[-1] / 100
+        if output != 0:
+            plot(pattern, output, secondary=True)
