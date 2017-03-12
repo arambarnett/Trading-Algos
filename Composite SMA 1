@@ -1,0 +1,105 @@
+import math
+import numpy as np
+
+def update_external_data():
+    
+    storage.usdEUR = storage.get('usdEUR', 0.90)
+    storage.usdCNY = storage.get('usdCNY', 6.55)    
+    
+    try:
+        forex = get_json('http://api.fixer.io/latest?base=USD&symbols=EUR,CNY')
+        storage.usdEUR = forex['rates']['EUR']
+        storage.usdCNY = forex['rates']['CNY']
+    except: 
+        log('FOREX update failed; using last known rates'); pass
+
+def tick():
+
+    btce_30 = float(data(interval=14400)(exchange=exchanges.btce).btc_usd.ma(30))
+    finex_30 = float(data(interval=14400)(exchange=exchanges.bitfinex).btc_usd.ma(30))
+    stamp_30 = float(data(interval=14400)(exchange=exchanges.bitstamp).btc_usd.ma(30))
+    okcoin_30 = float(data(interval=14400)(exchange=exchanges.okcoin).btc_cny.ma(30))/storage.usdCNY
+    
+    #plot('btce_30', btce_30)
+    #plot('finex_30', finex_30)
+    #plot('stamp_30', stamp_30)
+    #plot('okcoin_30', okcoin_30)
+
+    btce = float(data(exchange=exchanges.btce).btc_usd.price)
+    finex = float(data(exchange=exchanges.bitfinex).btc_usd.price)
+    stamp = float(data(exchange=exchanges.bitstamp).btc_usd.price)
+    okcoin = float(data(exchange=exchanges.okcoin).btc_cny.price)/storage.usdCNY
+
+    plot('btce', btce)
+    plot('finex', finex)
+    plot('stamp', stamp)  
+    plot('okcoin', okcoin)
+
+    period = 60
+
+    btce_stale = float(len(set(list(np.round(
+        data(exchange=exchanges.btce).btc_usd.period(period,'close'),2)))))-1
+    finex_stale = float(len(set(list(np.round(
+        data(exchange=exchanges.bitfinex).btc_usd.period(period,'close'),2)))))-1
+    stamp_stale = float(len(set(list(np.round(
+        data(exchange=exchanges.bitstamp).btc_usd.period(period,'close'),2)))))-1
+    okcoin_stale = float(len(set(list(np.round(
+        (data(exchange=exchanges.okcoin).btc_cny.period(period,'close')/storage.usdCNY),2)))))-1
+
+    def index_to_max_stale(x):
+        stale_list = [btce_stale, finex_stale, stamp_stale, okcoin_stale]
+        return x/max(stale_list)
+    btce_stale = index_to_max_stale(btce_stale)
+    finex_stale = index_to_max_stale(finex_stale)
+    stamp_stale = index_to_max_stale(stamp_stale)
+    okcoin_stale = index_to_max_stale(okcoin_stale)
+    
+    def root(x):
+        return x**0.1
+    btce_stale = root(btce_stale)
+    finex_stale = root(finex_stale)
+    stamp_stale = root(stamp_stale)
+    okcoin_stale = root(okcoin_stale)
+    
+    '''
+    def cosine_one(x):
+        return -0.5*math.cos(math.pi*x)+0.5    
+    btce_stale = cosine_one(btce_stale)
+    finex_stale = cosine_one(finex_stale)
+    stamp_stale = cosine_one(stamp_stale)
+    okcoin_stale = cosine_one(okcoin_stale)
+    '''
+    sum_stale = btce_stale + finex_stale + stamp_stale + okcoin_stale
+    mean_30 = (btce_30+finex_30+stamp_30+okcoin_30)/4
+    btce_delta = (1-btce_stale)*(btce_30 / mean_30)
+    finex_delta = (1-finex_stale)*(finex_30 / mean_30)
+    stamp_delta = (1-stamp_stale)*(stamp_30 / mean_30)
+    okcoin_delta = (1-okcoin_stale)*(okcoin_30 / mean_30) 
+    total_delta = 1*(btce_delta+finex_delta+stamp_delta+okcoin_delta)
+    log(total_delta)
+    
+    composite_30 = (btce_30*btce_stale + 
+        finex_30*finex_stale + 
+        stamp_30*stamp_stale +
+        okcoin_30*okcoin_stale)/sum_stale +total_delta
+        
+    composite = (btce*btce_stale + 
+        finex*finex_stale + 
+        stamp*stamp_stale +
+        okcoin*okcoin_stale)/sum_stale +total_delta
+    
+    plot('composite_30', composite_30)
+    if info.tick%2==0:
+        plot('composite', 0.999*composite)
+    else:
+        plot('composite', 1.001*composite)
+    
+    plot('btce_stale', btce_stale, secondary=True)
+    plot('finex_stale', finex_stale, secondary=True)
+    plot('stamp_stale', stamp_stale, secondary=True)
+    plot('okcoin_stale', okcoin_stale, secondary=True)
+    
+    plot('zero', 0, secondary=True)
+    if info.tick==0:
+        plot('z', -4, secondary=True)
+  
