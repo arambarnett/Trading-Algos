@@ -1,0 +1,228 @@
+# LAVA Tradebot v0.2 - April 12th, 2015
+#
+# Ni6HTH4wK [LAVA]
+# BTC: 19P7bkzqSAwSm6X7tXmRVkx6AuBXEUZioo
+#
+# UNTESTED LIVE - BETA - USE AT OWN RISK
+
+PERIOD = 12 # Tick Lookback length
+PAIR = info.primary_pair
+
+import talib
+import time
+
+LIVE = False
+try: end = info.end
+except: LIVE = True
+BACKTEST = not LIVE
+
+TEST_LIMIT = False
+
+def initialize():
+    storage.reset(); log('storage.reset()')
+    storage.trades = storage.get('trades', 0)    
+
+def instrument():
+
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    if pair == pairs.btc_cny:
+        pair = 'btccny'
+    if pair == pairs.ltc_cny:
+        pair = 'ltccny'
+    storage.currency_code = ''.join(list((pair)[3:6]))
+    storage.asset_code = ''.join(list((pair)[0:3]))
+    storage.currency_CODE = (storage.currency_code).upper()
+    storage.asset_CODE = (storage.asset_code).upper()
+    return 
+
+def computation(period):
+    
+    H = data(interval=3600)[PAIR].period(100,'high')
+    L = data(interval=3600)[PAIR].period(100,'low')
+    O = data(interval=3600)[PAIR].period(100,'open') 
+    C = data(interval=3600)[PAIR].period(100,'close')
+    
+    hloc = (H+L+O+C)/4
+    sma_hloc = talib.MA(hloc, timeperiod=period, matype=1)
+    hkclose = sma_hloc[-1]
+    prevclose = sma_hloc[-2]
+    
+    if info.tick == 0: 
+        prevopen = talib.MA(O, timeperiod=period, matype=1)[-1]
+    else:
+        prevopen = storage.hkopen
+    storage.hkopen = (prevopen+prevclose)/2
+    hkstart = storage.hkopen
+    
+    return float(hkstart), float(hkclose)
+
+def chart():
+    
+    plot('HK_open', storage.eq1)
+    plot('HK_close', storage.eq2)
+    plot('High', data[PAIR].high)
+    plot('Low', data[PAIR].low)
+
+def indicators():
+
+    storage.eq1, storage.eq2 = computation(PERIOD)
+    storage.price = float(data[PAIR].price)
+
+
+    
+def think():
+    
+    price = storage.price
+    eq1 = storage.eq1
+    eq2 = storage.eq2    
+    holding_currency = storage.holding_currency
+    holding_assets = storage.holding_assets
+    currency = storage.currency
+    assets = storage.assets
+
+    action = 0
+    if eq2 >= eq1:
+        #if price <= eq1:
+        if holding_currency:
+            action = 1
+    else:
+        #if price >= eq1:
+        if holding_assets:
+            action = -1
+
+    storage.action = action    
+
+def think1():
+    
+    eq1 = storage.eq1
+    eq2 = storage.eq2    
+    holding_currency = storage.holding_currency
+    holding_assets = storage.holding_assets
+    currency = storage.currency
+    assets = storage.assets
+
+    action = 0
+    if eq2 >= eq1:
+        if holding_currency:
+            action = 1
+    else:
+        if holding_assets:
+            action = -1
+
+    storage.action = action
+
+def order():
+    
+    holding_currency = storage.holding_currency
+    holding_assets = storage.holding_assets
+
+    try:
+        if storage.action == 1:
+            if holding_currency:
+                storage.trades += 1
+                if BACKTEST and not (TEST_LIMIT): 
+                    buy(PAIR)
+                else: 
+                    buy(PAIR, price=storage.eq1)
+        if storage.action == -1:
+            if holding_assets:
+                storage.trades += 1
+                if BACKTEST and not (TEST_LIMIT): 
+                    sell(PAIR)
+                else:
+                    sell(PAIR, price=storage.eq1)
+    except TradewaveFundsError, e:
+        log('Not enough currency!')
+    except TradewaveInvalidOrderError, e:
+        log('Unable to place order: %s' % e.message)    
+        
+    if abs(storage.action) == 1:
+        report()
+        
+
+def holdings():
+    
+    price = storage.price
+    storage.currency = float(portfolio[currencies[storage.currency_code]])
+    storage.assets = float(portfolio[currencies[storage.asset_code]])    
+
+    if info.tick == 0:
+        storage.start_currency = (0.00001 +
+            storage.currency + storage.assets * price)
+        storage.start_assets = (0.00001 +
+            storage.assets + storage.currency / price)
+        if storage.currency + storage.assets == 0:
+            log('Zero Starting Portfolio')
+            raise Stop()
+        storage.start_time = info.current_time    
+
+    storage.holding_assets = False
+    storage.holding_currency = False
+    if storage.currency > (price * 0.02):
+        storage.holding_currency = True
+    if storage.assets > 0.02:
+        storage.holding_assets = True
+
+def report():
+
+    price = storage.price
+    days = float((info.current_time - storage.start_time) / 86400)
+    trades = storage.trades
+    if trades == 0:
+        frequency = 0
+    else:
+        frequency = days / trades
+    start_date = time.strftime(
+        '%Y-%m-%d %H:%M:%S', time.localtime(storage.start_time))
+    potential_assets = storage.assets + storage.currency / price
+    potential_currency = storage.currency + storage.assets * price
+    start_assets = storage.start_assets
+    start_currency = storage.start_currency
+    ROI_currency = (100 * potential_currency / start_currency) - 100
+    ROI_assets = (100 * potential_assets / start_assets) - 100
+
+    log('Start Date: %s' % start_date)
+    log('Day: %s Trades: %s Frequency %.1f' % (days, trades, frequency))
+    log('%s %.1f / %.1f / %.1f ROI' %
+        (storage.currency_CODE, start_currency,
+         potential_currency, ROI_currency))
+    log('%s %.1f / %.1f / %.1f ROI' %
+        (storage.asset_CODE, start_assets, potential_assets, ROI_assets))
+    log('***************************************')
+
+
+def tick():
+
+    instrument()
+    indicators()
+    holdings()
+    chart()
+    think()
+    order()
+    
+def stop():
+
+    price = storage.price
+    bnh_gain = (storage.start_assets * price) / storage.start_currency
+    your_gain = (storage.currency + storage.assets * price) / storage.start_currency
+
+    log('***************************************')
+    log('***************************************')
+    log('    LAVA Tradebot v0.1 by Ni6HTH4wK    ')
+    log('')
+    log('        TIP YOUR DEALER PLEASE.        ')
+    log('BTC: 19P7bkzqSAwSm6X7tXmRVkx6AuBXEUZioo')
+    report()
+    log('Buy and Hold Gain: %.2fX' % bnh_gain)
+    log('LAVA BOT.........: %.2fX' % your_gain)
+
