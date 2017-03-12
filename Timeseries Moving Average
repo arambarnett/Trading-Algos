@@ -1,0 +1,58 @@
+PAIR = info.primary_pair
+
+import talib
+
+def tick():
+    
+    period = 10
+    forecast = 10
+
+    #basic time series moving average
+    ma0 = data[PAIR][-1].ma(period)
+    ma1 = data[PAIR][-2].ma(period)
+    ma2 = data[PAIR][-3].ma(period)
+    ma3 = data[PAIR][-4].ma(period)
+    ma4 = data[PAIR][-5].ma(period)
+    
+    s0 = ma0-ma1
+    s1 = ma1-ma2
+    s2 = ma2-ma3
+    s3 = ma3-ma4
+    a0 = s0-s1
+    a1 = s1-s2
+    a2 = s2-s3
+    c0 = a0-a1
+    c1 = a1-a2
+    j0 = c0-c1
+
+    ma = ma0
+    ma_i = ma0 + s0*forecast
+    ma_ii = ma0 + s0*forecast + a0*forecast
+    ma_iii = ma0 + s0*forecast + a0*forecast + c0*forecast
+    ma_iiii = ma0 + s0*forecast + a0*forecast + c0*forecast + j0*forecast
+    
+    plot('ma', ma)
+    plot('ma_i', ma_i)
+    plot('ma_ii', ma_ii)
+    plot('ma_iii', ma_iii)
+    plot('ma_iiii', ma_iiii)
+ 
+    '''
+    tma1 = ma + (ma-ma_prev)
+    plot('tma1',tma1)
+    #advanced time series moving average
+    matype = 3
+    # matype: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA, 
+    # 5=TRIMA, 6=KAMA, 7=MAMA, 8=T3 (Default=SMA)
+    warmup = data[PAIR].warmup_period('close')
+    ma = talib.MA(warmup, timeperiod=period, matype=matype)[-1]
+    ma_prev = talib.MA(warmup, timeperiod=period, matype=matype)[-(1+forecast)]
+    tma2 = ma + (ma-ma_prev)    
+    plot('tma2',tma2)
+    #time series linear regression
+    warmup = data[PAIR].warmup_period('close')
+    ma = talib.LINEARREG(warmup, timeperiod=period)[-1]
+    ma_prev = talib.LINEARREG(warmup, timeperiod=period)[-(1+forecast)]
+    tma3 = ma + (ma-ma_prev)
+    plot('tma3',tma3)
+    '''
