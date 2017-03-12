@@ -1,0 +1,135 @@
+import time as t
+PAIR = info.primary_pair
+
+
+# ICEBERG CONTROLS ###############################
+ICE_TEST = True # On/Off while backtesting
+AMOUNT = 0.777  # Iceberg size (BTC)
+DELAY =  30     # Iceberg repeat (seconds)
+##################################################
+
+
+def initialize():
+    storage.reset()
+    log('storage.reset()')
+    
+    # Check if script is live or backtest
+    storage.live = storage.get('live', False)
+    try: end = info.end
+    except: storage.live=True
+    
+    # currency and asset code of info.primary_pair
+    instruments()  
+    
+def holdings(): 
+    
+    # Store wallet status of info.primary_pair
+    storage.currency = float(portfolio[currencies[storage.currency_code]])
+    storage.assets = float(portfolio[currencies[storage.asset_code]])    
+    storage.mean_price = float(data[PAIR].ma(2))
+    storage.holding_assets = storage.holding_currency = False
+    if storage.currency >= 0.02 * storage.mean_price:
+        storage.holding_currency = True
+    if storage.assets >= 0.01:
+        storage.holding_assets = True
+
+def instruments():
+
+    # extract currency and asset code
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    if pair == pairs.btc_cny:
+        pair = 'btccny'
+    if pair == pairs.ltc_cny:
+        pair = 'ltccny'    
+    storage.currency_code = ''.join(list((pair)[3:6]))
+    storage.asset_code = ''.join(list((pair)[0:3]))
+    storage.currency_CODE = (storage.currency_code).upper()
+    storage.asset_CODE = (storage.asset_code).upper()
+    return
+
+def market_ice(action):
+
+    live = storage.live
+
+    if ICE_TEST or live:
+        try:
+            # BUY            
+            if action == 1:
+                z = True
+                while storage.holding_currency:
+                    try:  portfolio.update()
+                    except:  log('portfolio.update() failed')
+                    holdings()
+                    if storage.currency/storage.mean_price > 1.5*AMOUNT:
+                        # ICY BUY                            
+                        buy(PAIR, amount=AMOUNT)
+                    elif storage.holding_currency:
+                        # ALL IN
+                        buy(PAIR)
+                    if live:
+                        t.sleep(DELAY) 
+                    
+            # SELL        
+            if action == -1:        
+                while storage.holding_assets:
+                    try:  portfolio.update()
+                    except:  log('portfolio.update() failed')
+                    holdings()                        
+                    if storage.assets > 1.5*AMOUNT:
+                        # ICY SELL
+                        sell(PAIR, amount=AMOUNT)      
+                    elif storage.holding_assets:
+                        # ALL OUT
+                        sell(PAIR)  
+                    if live:
+                        t.sleep(DELAY)   
+                
+        # Detail feedback but always move on.    
+        except TradewaveFundsError as e:
+            log('TradewaveFundsError: %s' % e.message)
+        except TradewaveInvalidOrderError as e:
+            log('TradewaveInvalidOrderError: %s' % e.message)
+        except Exception as e: 
+            log('Exception: %s' % e.message) 
+        except: 
+            log('Failed order - error unknown')                    
+    
+    # If backtest and not ICE_TEST                    
+    else:
+        if action == 1:
+            buy(PAIR)
+        if action == -1:
+            sell(PAIR)
+        
+def tick():
+
+    # Update Holdings
+    holdings()
+    holding_currency = storage.holding_currency
+    holding_assets = storage.holding_assets
+    
+    # Generic Trade Signal; every 50 ticks
+    storage.action = storage.get('action', 1)    
+    if info.tick % 50 == 0:
+        storage.action = -storage.action 
+    action = storage.action        
+
+    # Generic Trade Logic
+    if action == 1:
+        if holding_currency:
+            market_ice(action)
+        
+    if action == -1:
+        if holding_assets:
+            market_ice(action)
+        
