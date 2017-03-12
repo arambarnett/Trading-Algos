@@ -1,0 +1,66 @@
+import numpy as np
+from scipy.stats import pearsonr
+
+# PARAMETERS
+PRIMARY_PAIR        = pairs.btc_usd
+SECONDARY_EXCHANGE  = exchanges.bitfinex
+SECONDARY_PAIR      = pairs.btc_usd
+LENGTH              = 5             # Length of the time we're looking into the past, in ticks.
+MIN_CORREL_FACT     = 0.98          # Minimum value of the Correlation factor
+
+def initialize():
+     storage.invested = True
+
+def tick():
+    # Comparing BTC/USD from Bitstamp with Bitfinex BTC/USD.
+    primary   = data[PRIMARY_PAIR]
+    secondary = data(exchange = SECONDARY_EXCHANGE)[SECONDARY_PAIR]
+    
+    # Calculating the correlation index
+    last_ticks_pri =   primary.period(LENGTH, "close")
+    last_ticks_sec = secondary.period(LENGTH, "close")
+    
+    # Calculating and printing the corellation factor
+    correl = pearsonr(last_ticks_pri, last_ticks_sec)
+    correl = correl[0]
+    log(correl)
+    
+    compare = last_ticks_pri < last_ticks_sec # getting a boolean array
+    # Uncomment the following to play with LTC/USD or LTC/EUR, because there is a finite 
+    # nonzero gap between those two pairs. Feel free to alter the value of the inequality
+    # as you see fit for different pairs.
+    #compare = last_ticks_pri - last_ticks_sec < 0.8
+    
+    # Creating an array full with Truth values.
+    truearray = np.ones(LENGTH, dtype=bool)
+    compare   = (compare == truearray).all()
+    
+    # Printing the truth value of the compare inequality above.
+    log(compare)
+    
+    if compare and correl >= MIN_CORREL_FACT and storage.invested:
+        try:
+            buy(PRIMARY_PAIR)
+            storage.invested = False
+        except TradewaveFundsError, e:
+            log('Not enough funds, to buy!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place buy order: %s' % e.message) 
+        
+    """elif not compare and not storage.invested:
+        try:
+            sell(PRIMARY_PAIR)
+            storage.invested = True
+        except TradewaveFundsError, e:
+            log('Not enough funds, to sell!')
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place sell order: %s' % e.message) 
+    """
+    plot("Secondary_exchange_close_price", secondary.close)
+
+def stop():
+    if not storage.invested:
+        try:
+            sell(PRIMARY_PAIR)
+        except TradewaveInvalidOrderError, e: # thrown when you pass an invalid price or amount
+            log('Unable to place sell order: %s' % e.message)
