@@ -1,0 +1,43 @@
+# Test arbitrage
+
+TRESHOLD = 0.04
+
+def initialize():
+    
+    storage.reset()
+    
+    storage.diff = storage.get('diff', 0)
+
+
+def tick():
+    
+    ltc_btc_price = float(data.ltc_btc.price)
+    btc_usd_price = float(data.btc_usd.price)
+    ltc_usd_price = float(data.ltc_usd.price)
+    
+    ltc_btc_price = data.ltc_btc.price
+    btc_usd_price = data.btc_usd.price
+    ltc_usd_price = data.ltc_usd.price  
+    
+
+    usd_to_btc = 1000/btc_usd_price
+    btc_to_ltc = usd_to_btc/ltc_btc_price
+    ltc_to_usd = btc_to_ltc*ltc_usd_price
+
+    diff_now = (ltc_to_usd - 1000)/1000
+    
+    if diff_now > TRESHOLD:
+        storage.ltc_btc_price = ltc_btc_price
+        storage.btc_usd_price = btc_usd_price
+        storage.ltc_usd_price = ltc_usd_price
+        storage.diff = diff_now
+
+    if portfolio.usd > 2 and storage.diff > TRESHOLD:
+        buy(pairs.btc_usd, price=storage.btc_usd_price, timeout=60)
+        
+    if portfolio[currencies.btc] > 0.02:
+        buy(pairs.ltc_btc, price=storage.ltc_btc_price, timeout=60)
+        
+    if portfolio[currencies.ltc] > 0.2:
+        log(portfolio[currencies.ltc])
+        sell(pairs.ltc_usd, price=storage.ltc_usd_price, timeout=60)
