@@ -1,0 +1,562 @@
+def banner():
+    
+    '''
+                                      The Magic Carpet
+                                                          /%%%%/;/=~
+                                  /%%%%%%%%%%%%%%%%%%%%%%/%%%%/;/=~
+                         ~=/;/%%%/%%%%%%%%%%%%%%%%%%%%%%/%%%%/;/=~
+                        ~=/;/%%%/%%%% LTC-BTC-USD %%%%%/%%%%/;/=~
+                       ~=/;/%%%/%%%%%%%%%%%%%%%%%%%%%%/%%%%/;/=~
+                      ~=/;/%%%/%%%%%%%%%%%%%%%%%%%%%%@)
+                     ~=/;/%%%@)
+
+                                       litepresence 
+                                         Jan 2016
+    
+                              tri currency macd genetic algorithm
+    
+                        
+    
+    ###########################################################
+    STAGE 1:  indications, logic, general framework
+    ###########################################################
+    
+    - base indication is 12/26 TA-lib MACD for each currency 
+    - will run live 5m, 10m or 15m candles reverse aggregated to 1h candles
+    - indications have been smoothed to remove reverse aggregation wiggle
+    - indications are price normalized so each MACD is equally scaled
+    - sample trade logic complete
+    - storage object for genome created
+    - genetic pre training complete: 'ANTECEDENT'
+    - approximate trade frequency is 24 hours
+    - deep array of closing price data manifested for walk forward optimization
+    
+    ###########################################################
+    STAGE 2: walk foward optimization
+    ###########################################################
+    
+    evolve()
+    
+    every tick, only when LIVE, the bot should:
+    
+    - pick one locus in the genome, note its starting allele state
+    - backtest the algo across last 2000 ticks of data 
+    - repeat process 2 more times in each alternate allele state (0,1, or 2)
+    - determine the allele which generates the highest ROI in USD terms for that locus
+    - update the allele stored in the locus only if improvement over the original genome
+    - if the genome has changed, log the new genome.
+    
+    on the next tick it should pick the next locus down, and repeat the process 
+    thus after len(genome) ticks when live:
+       it has optimized the full genome to the past 2000 ticks of data
+    
+    after the genome is optimized, it should begin trading
+    Every tick it should continue to make an evolution attempt 
+    Whenever an optimization is found it should log its new genome
+    
+    during backtesting evolve only runs for the first len(genome) ticks
+    
+    
+    ###########################################################
+    STAGE 3: debug and live test evolve()
+    ###########################################################    
+    
+    - ongoing Jan 1, 2016
+    '''
+    
+    
+# Genetic Pre Training
+#ANTECEDENT = '121212121212121212' #New Genome = '212000000000222222'
+#ANTECEDENT = '020202020202020202'
+ANTECEDENT = '012012012012012012'
+#ANTECEDENT = '100212000000222222'
+EVOLVE = True
+
+import talib as ta
+import numpy as np
+import math as ma
+import time as t
+np.set_printoptions(precision=3)
+
+
+LIVE = False
+try: end=info.end # there is no end point in a live session
+except: LIVE = True
+BACKTEST = not LIVE
+
+PERIOD1 = 12
+PERIOD2 = 26
+
+AGGREGATION = 3600
+
+LTCBTC = pairs.ltc_btc
+BTCUSD = pairs.btc_usd
+LTCUSD = pairs.ltc_usd
+
+DEPTH = 30
+
+def initialize():
+    
+    #clear storage
+    storage.reset(); log('storage.reset()')
+    storage.genome = storage.get('genome', [int(i) for i in list(ANTECEDENT)])
+    storage.locus = storage.get('locus', 0)
+
+def deep(label, depth, aggregation, pair, evolve):
+    # create a deep array of closing prices
+
+    deep_c = label + '_deep_c' 
+    if LIVE or (info.tick==0) or evolve:
+        C=np.zeros(depth)
+        for i in range(-depth,0):
+            C[i] = float(data(interval=aggregation)[pair][i].close)
+        z = np.count_nonzero(C)
+        C = C[-z:]
+    if BACKTEST and not evolve:
+        storage[deep_c] = storage.get(deep_c, [])   
+        if info.tick==0:
+            storage[deep_c] = C.tolist()
+        else:
+            storage[deep_c].append(float(data(interval=aggregation)[pair].close))
+        storage[deep_c]=storage[deep_c][-depth:]
+        C = np.array(storage[deep_c])
+    return C
+
+def smooth(label, array, aggregation, depth):
+    # smooth reverse aggregated indicator data
+    
+    ratio = int(ma.ceil(aggregation/info.interval))
+    if ratio == 1: 
+        return array
+    else:    
+        ratio = min(ratio, (info.tick+1)) # hat tip @ traderjoe
+        smooth = '%s_smooth' % label
+        storage[smooth] = storage.get(smooth, [[],[]])
+        if info.tick == 0:
+            storage[smooth][0] = list(array)
+            storage[smooth][1] = list(ta.MA(array, ratio))
+        else:
+            storage[smooth][0].append(array[-1])
+            storage[smooth][0] = storage[smooth][0][-ratio:]    
+            storage[smooth][1].append(sum(storage[smooth][0])/ratio)
+            storage[smooth][1] = storage[smooth][1][-depth:]    
+        return np.array(storage[smooth][1])  
+
+def ltcbtcusd_value():
+    # calculate return on investment in ltc, btc, and usd terms
+    
+    ltcbtc = data[LTCBTC].price
+    ltcusd = data[LTCUSD].price
+    btcusd = data[BTCUSD].price
+    ltc = portfolio.usd/ltcusd + portfolio.btc/ltcbtc + portfolio.ltc
+    btc = portfolio.usd/btcusd + portfolio.ltc*ltcbtc + portfolio.btc
+    usd = portfolio.btc*btcusd + portfolio.ltc*ltcusd + portfolio.usd
+    storage.ltcbtcusd = storage.get('ltcbtcusd', [ltc, btc, usd])
+    if info.tick == 0:
+        storage.ltcbtcusd = [ltc, btc, usd]
+    ltc = ltc/storage.ltcbtcusd[0]
+    btc = btc/storage.ltcbtcusd[1]
+    usd = usd/storage.ltcbtcusd[2]
+    log('ltc: %.2f btc: %.2f usd: %.2f ROI' % (ltc, btc, usd))
+    
+def ltcbtcusd_time_balance():
+    # calculate percent time holding each instrument
+    
+    tb = np.array(storage.time_spent, dtype=float) / np.sum(storage.time_spent)
+    log('ltc: %.2f btc: %.2f usd: %.2f Time Balance' % (tb[-1], tb[-2], tb[-3]))    
+    
+def close_arrays(depth, evolve): 
+    # return 3 closing price arrays
+    
+    ltcbtc_c = deep('ltcbtc', depth, AGGREGATION, LTCBTC, evolve)
+    ltcusd_c = deep('ltcusd', depth, AGGREGATION, LTCUSD, evolve)
+    btcusd_c = deep('btcusd', depth, AGGREGATION, BTCUSD, evolve)
+    
+    return ltcbtc_c, ltcusd_c, btcusd_c 
+    
+def macd(ltcbtc_c, ltcusd_c, btcusd_c):
+    
+    # calculate a normalized macd for each instrument
+    ltcbtc_macd, ltcbtc_macd_sig, ltcbtc_macd_hist = ta.MACD(ltcbtc_c, PERIOD1, PERIOD2)
+    ltcbtc_macd = smooth('ltcbtc_macd', ltcbtc_macd, AGGREGATION, DEPTH)
+    ltcbtc_mean = float(data(interval=AGGREGATION)[LTCBTC].ma(30))/100
+    ltcbtc_macd = ltcbtc_macd/ltcbtc_mean      
+    
+    btcusd_macd, btcusd_macd_sig, btcusd_macd_hist = ta.MACD(btcusd_c, PERIOD1, PERIOD2)
+    btcusd_macd = smooth('btcusd_macd', btcusd_macd, AGGREGATION, DEPTH)
+    btcusd_mean = float(data(interval=AGGREGATION)[BTCUSD].ma(30))/100
+    btcusd_macd = btcusd_macd/btcusd_mean  
+    
+    ltcusd_macd, ltcusd_macd_sig, ltcusd_macd_hist = ta.MACD(ltcusd_c, PERIOD1, PERIOD2)
+    ltcusd_macd = smooth('ltcusd_macd', ltcusd_macd, AGGREGATION, DEPTH)
+    ltcusd_mean = float(data(interval=AGGREGATION)[LTCUSD].ma(30))/100
+    ltcusd_macd = ltcusd_macd/ltcusd_mean      
+    
+    return ltcbtc_macd, ltcusd_macd, btcusd_macd
+    
+def all_bull_all_bear(ltcbtc_macd, ltcusd_macd, btcusd_macd): 
+
+    # determine if all are rising / falling
+    all_bull = False
+    all_bear = False
+    if ((ltcbtc_macd[-1] > ltcbtc_macd[-2]) and 
+        (btcusd_macd[-1] > btcusd_macd[-2]) and 
+        (ltcusd_macd[-1] > ltcusd_macd[-2])):
+            all_bull = True
+    if ((ltcbtc_macd[-1] < ltcbtc_macd[-2]) and 
+        (btcusd_macd[-1] < btcusd_macd[-2]) and 
+        (ltcusd_macd[-1] < ltcusd_macd[-2])):
+            all_bear = True  
+    
+    return all_bull, all_bear
+
+def format_log(a, format_string ='{0:.2f}'):
+    log ([format_string.format(v,i) for i,v in enumerate(a)])
+    
+def evolve():
+    
+    log('evolve() attempt at locus: %s' % storage.locus)
+    
+    # Define simulated backtest window
+    depth = 700; width = 200
+    
+    # create deep closing price arrays for each of 3 trading pairs
+    ltcbtc_dc, ltcusd_dc, btcusd_dc = close_arrays(depth, True)
+    
+    # matrix the closing price numpy arrays
+    price_matrix = [ltcbtc_dc, ltcusd_dc, btcusd_dc] 
+    
+    # find the current value of locus to be mutated
+    original_state = storage.genome[storage.locus]
+    
+    # create 3 simulated starting portfolios w/ same 1 btc start balance
+    portfolio = np.ones((3,3), dtype=float)  # sim portfolio 2
+    #                       [usd, btc, ltc]
+    log('DEBUG 1 %s' % portfolio)    
+ 
+    # empty any previous data in storage.macd_n_smooth from previous evolution
+    storage.macd_0_smooth = [[],[]] #ltcbtc macd def smooth() storage
+    storage.macd_1_smooth = [[],[]] #ltcusd macd def smooth() storage
+    storage.macd_2_smooth = [[],[]] #btcusd macd def smooth() storage
+   
+    # run a simulated backtest for each allele state
+    # possible states are 0=usd; 1=btc; 2=ltc
+    for allele in range(0,3): # do this for each possible allele state (0,1,2)
+        # log('DEBUG 2 %s' % allele)
+        
+        # for every possible slice of the deep closing array; oldest first:
+        for cut in range(depth, width, -1):
+
+            #if cut == depth: log('DEBUG 3 %s' % allele)
+            # create 2d matrix for market slices and macd for each currency pair
+            market_slice = [[],[],[]]
+            macd = [[],[],[]]
+            # create 1d matrix for last price
+            last = [0,0,0]
+            for n in range (0,3): # do this for each currency pair
+                # if (n == 0) and (cut==depth): log('DEBUG 4 %s' % allele)
+                # take a slice of the market for each currency pair
+                # slice notation reference
+                # z[-3:]      # only the last 3 
+                # z[:3]       # only the first 3 
+                market_slice[n] = (price_matrix[n][:cut])[-width:]
+                # calculate an macd value, and previous macd value for each currency pair  
+                # try:
+                macd[n] = ta.MACD(market_slice[n], PERIOD1, PERIOD2)[-1]
+                # except Exception as e: log('talib fail %s' % e)
+                # smooth the macd for each currency pair
+                label = 'macd_' + str(n)
+                macd[n] = smooth(label, macd[n], AGGREGATION, 10)
+                # price normalize each macd by sma30
+                mean = (sum((market_slice[n])[-30:])/30)/100
+                macd[n] = macd[n]/mean                    
+                #extract last closing price            
+                last[n] = market_slice[n][-1]
+
+            # calculate all_bull and all_bear from sim macd arrays for each instrument
+            all_bull, all_bear = all_bull_all_bear(macd[0], macd[1], macd[2])
+            # if (cut == depth): log('normalized macd %.5f %.5f %.5f' % (macd[0][-1], macd[1][-1], macd[2][-1]))  
+         
+            # Temporarily MODIFY THE GENOME  at the current locus
+            storage.genome[storage.locus] = allele
+            # use genome definition to return ideal position        
+            sim_position = genome(
+                macd[0][-1], macd[1][-1], macd[2][-1], all_bull, all_bear)
+            # Undo MODIFY THE GENOME 
+            storage.genome[storage.locus] = original_state                    
+            
+            # check what each simulation is holding        
+            sim_state = np.argmax(portfolio, axis=1)
+            
+            if -cut % 4 ==0: 
+                log('%.5f %.2f %.0f %s %s ' % (last[0], last[1], last[2], all_bull, all_bear) +  
+                    '%s' % [('%5.1f' % i) for i in portfolio[0]] +
+                    '%s' % [('%5.1f' % i) for i in portfolio[1]] +
+                    '%s' % [('%5.1f' % i) for i in portfolio[2]] +
+                    '%s %s ' % (sim_position, sim_state[allele]))               
+            
+            # if the the simulator wants to change position
+            if sim_position != sim_state[allele]:
+                # if (cut == depth): log('allele %s simulator trade signal: to' % allele)
+    
+                # update simulated portfolio via the last price
+                if 0: #on/off log last price on first slice
+                    if (cut == depth):
+                        log('ltcbtc close %s'% last[0]) 
+                        log('ltcusd close %s'% last[1]) 
+                        log('btcusd close %s'% last[2]) 
+
+                
+                if sim_position == 0: 
+                    # if (cut == depth):           log('move to usd')
+                    if sim_state[allele] == 1: #we're holding btc
+                        # if (cut == depth):       log('via btcusd')
+                        portfolio[allele][0] = portfolio[allele][1] * last[2] *0.998 #ltcusd 
+                        portfolio[allele][1] = 0
+                    if sim_state[allele] == 2: #we're holding ltc
+                        # if (cut == depth):       log('via ltcusd')
+                        portfolio[allele][0] = portfolio[allele][2] * last[1] *0.998 #ltcusd
+                        portfolio[allele][2] = 0
+                
+                if sim_position == 1: 
+                    # if (cut == depth):          log('move to btc')
+                    if sim_state[allele] == 0: # we're holing usd
+                        #if (cut == depth):       log('via btcusd')
+                        portfolio[allele][1] = portfolio[allele][0] / last[2] *0.998 #btcusd
+                        portfolio[allele][0] = 0
+                    if sim_state[allele] == 2: # we're holding ltc
+                        #if (cut == depth):       log('via ltcbtc')
+                        portfolio[allele][1] = portfolio[allele][2] * last[0] *0.998 #ltcbtc
+                        portfolio[allele][2] = 0
+                        
+                if sim_position == 2: 
+                    # if (cut == depth):          log('move to ltc')
+                    if sim_state[allele] == 0: # we're holding usd
+                        # if (cut == depth):      log('via ltcusd')
+                        portfolio[allele][2] = portfolio[allele][0] / last[1] *0.998 #ltcusd
+                        portfolio[allele][0] = 0
+                    if sim_state[allele] == 1: # we're holding ltc
+                        # if (cut == depth):      log('via ltcbtc')
+                        portfolio[allele][2] = portfolio[allele][1] / last[0] *0.998 #ltcbtc
+                        portfolio[allele][1] = 0
+                        
+                if 0: 
+                    log('sim_position %s' % sim_position)    
+                    log('sim_state %s' % sim_state)        
+                    log(portfolio)
+        
+        # move postion back to usd at the end of the simulated  backtest
+        sim_state = np.argmax(portfolio, axis=1)  
+        if sim_state[allele] != 0: #if not holding USD at end of sim backtest
+            if sim_state[allele] == 1:
+                # if (cut == depth):      log('via btcusd')
+                portfolio[allele][0] = portfolio[allele][1] * last[2] *0.998
+                portfolio[allele][1] = 0
+            if sim_state[allele] == 2:
+                # if (cut == depth):      log('via ltcusd')
+                portfolio[allele][0] = portfolio[allele][2] * last[1] *0.998
+                portfolio[allele][2] = 0
+
+    log(portfolio)
+    alleles = "'"+"".join(str(x) for x in storage.genome)+"'"
+    log(alleles)
+    
+    # determine which allele is most fit (greatest USD balance)
+    winner = -1
+    if portfolio[0][0] > max([portfolio[1][0], portfolio[2][0]]): winner = 0
+    if portfolio[1][0] > max([portfolio[0][0], portfolio[2][0]]): winner = 1
+    if portfolio[2][0] > max([portfolio[0][0], portfolio[1][0]]): winner = 2
+    
+    # if mutation improves fitness
+    if (winner != original_state) and (winner > -1):
+        # evolve genome at this locus to winning allele
+        log('allele number %s has changed from %s to %s' %
+            (storage.locus, original_state, winner))
+        storage.genome[storage.locus] = winner
+        log('!!! EVOLUTION !!! New Genome:')
+        log(storage.genome)
+    if winner == original_state:
+        log('original state %s still has the greatest fitness' % original_state)
+    if winner == -1:
+        log('tie, no winner found during evolution attempt')
+
+    # shift the locus counter forward to optimize a new allele on next evolve()
+    storage.locus += 1
+    # start over after optimizing the full genome
+    if storage.locus == len(storage.genome): storage.locus = 0    
+    
+def genome(ltcbtc, ltcusd, btcusd, all_bull, all_bear): 
+
+    move_to_asset = 0
+    if (not all_bull) and (not all_bear):
+        if   ltcbtc > btcusd > ltcusd : move_to_asset = storage.genome[0]
+        elif ltcbtc > ltcusd > btcusd : move_to_asset = storage.genome[1]
+        elif btcusd > ltcbtc > ltcusd : move_to_asset = storage.genome[2]
+        elif btcusd > ltcusd > ltcbtc : move_to_asset = storage.genome[3]
+        elif ltcusd > ltcbtc > btcusd : move_to_asset = storage.genome[4]
+        elif ltcusd > btcusd > ltcbtc : move_to_asset = storage.genome[5]
+    # relative position AND all rising
+    elif all_bull:
+        if   ltcbtc > btcusd > ltcusd : move_to_asset = storage.genome[6]
+        elif ltcbtc > ltcusd > btcusd : move_to_asset = storage.genome[7]
+        elif btcusd > ltcbtc > ltcusd : move_to_asset = storage.genome[8]
+        elif btcusd > ltcusd > ltcbtc : move_to_asset = storage.genome[9]
+        elif ltcusd > ltcbtc > btcusd : move_to_asset = storage.genome[10]
+        elif ltcusd > btcusd > ltcbtc : move_to_asset = storage.genome[11] 
+    # relative position AND all falling
+    elif all_bear:
+        if   ltcbtc > btcusd > ltcusd : move_to_asset = storage.genome[12]
+        elif ltcbtc > ltcusd > btcusd : move_to_asset = storage.genome[13]
+        elif btcusd > ltcbtc > ltcusd : move_to_asset = storage.genome[14]
+        elif btcusd > ltcusd > ltcbtc : move_to_asset = storage.genome[15]
+        elif ltcusd > ltcbtc > btcusd : move_to_asset = storage.genome[16]
+        elif ltcusd > btcusd > ltcbtc : move_to_asset = storage.genome[17]   
+        
+    return move_to_asset
+
+def holdings():
+    # check account balances
+
+    if info.tick == 0:     
+        storage.start = t.time()
+        ltcbtcusd_value()
+
+    holding_usd = False
+    holding_btc = False
+    holding_ltc = False
+    if portfolio.usd > 100:
+        holding_usd = True
+    if portfolio.ltc > 10:
+        holding_ltc = True   
+    if portfolio.btc > 1:
+        holding_btc = True   
+        
+    state = 10    
+    if holding_btc:
+        state = 11
+    if holding_ltc:
+        state = 12
+    plot('state', state, secondary=True)
+    
+    storage.time_spent = storage.get('time_spent', [0,0,0])
+    if info.tick == 0: 
+        storage.time_spent = [0,0,0]
+    if state == 10: 
+        storage.time_spent[0] += 1
+    if state == 11: 
+        storage.time_spent[1] += 1    
+    if state == 12: 
+        storage.time_spent[2] += 1
+
+    storage.trades = storage.get('trades',0)
+    if info.tick == 0: storage.trades = 0
+
+    return (holding_usd, holding_btc, holding_ltc, state)    
+    
+def trade(position, holding_usd, holding_btc, holding_ltc):
+    # place orders to make holdings match ideal position
+    
+    if position == 0: #'usd'
+        if holding_btc:
+            sell(BTCUSD)
+            ltcbtcusd_value()
+            storage.trades +=1
+        if holding_ltc:
+            sell(LTCUSD)
+            ltcbtcusd_value()
+            storage.trades +=1    
+            
+    if position == 1: #'btc'
+        if holding_ltc:
+            sell(LTCBTC)
+            ltcbtcusd_value()
+            storage.trades +=1
+        if holding_usd:
+            buy(BTCUSD)
+            ltcbtcusd_value()
+            storage.trades +=1 
+            
+    if position == 2: #'ltc'
+        if holding_btc:
+            buy(LTCBTC)
+            ltcbtcusd_value()
+            storage.trades +=1
+        if holding_usd:
+            buy(LTCUSD)
+            ltcbtcusd_value()
+            storage.trades +=1            
+            
+def chart(ltcbtc, ltcusd, btcusd):
+
+    plot('btcusd_MACD',btcusd,secondary=True)     
+    plot('ltcbtc_MACD',ltcbtc,secondary=True)
+    plot('ltcusd_MACD',ltcusd,secondary=True)    
+    plot('ltcbtc', (data[LTCBTC].price*10000))
+    plot('ltcusd', (data[LTCUSD].price*100))
+    plot('zero', 0, secondary=True)              
+
+def tick():
+
+    # check account balances    
+    holding_usd, holding_btc, holding_ltc, state = holdings()
+    # manifest 3 closing price arrays; depth = 100
+    ltcbtc_c, ltcusd_c, btcusd_c = close_arrays(100, False)
+    # calculate macd values for each array
+    ltcbtc_macd, ltcusd_macd, btcusd_macd = macd(ltcbtc_c, ltcusd_c, btcusd_c)
+    # check if all macd's are rising (or all are falling)
+    all_bull, all_bear = all_bull_all_bear(ltcbtc_macd, ltcusd_macd, btcusd_macd)
+    # plot indicators
+    #chart(ltcbtc_macd[-1], ltcusd_macd[-1], btcusd_macd[-1])  
+
+    if info.tick == 0:
+        # build the initial genome from the n     
+        genome(ltcbtc_macd[-1], ltcusd_macd[-1], btcusd_macd[-1], all_bull, all_bear)
+        log('Genome: %s' % storage.genome)
+  
+    if EVOLVE: #on/off evolution  
+        if LIVE or (BACKTEST and (info.tick <18)):
+            log('len(genome) %s' % len(storage.genome))
+            # mutate the genome
+            evolve()
+    
+    
+    
+    # build a new genome, consult it for        
+    position = genome(
+        ltcbtc_macd[-1], ltcusd_macd[-1], btcusd_macd[-1], all_bull, all_bear)
+     
+        
+    if BACKTEST: # remove this condition when fully tested / debugged
+    
+        # when fully evolved
+        if info.tick>len(storage.genome): 
+            # make holdings match ideal position
+            trade(position, holding_usd, holding_btc, holding_ltc)
+              
+def stop():
+    
+    elapsed = t.time()-storage.start
+    days = float(info.tick*info.interval/86400)
+    trades = storage.trades
+    if trades == 0: frequency = 0
+    else: frequency = 24*days/trades
+    
+    log('elapsed...: %.1f seconds' % elapsed)
+    log('ticks.....: %s' %info.tick)
+    log('days......: %s'% days)
+    log('trades....: %s' % trades)
+    log('frequency.: %.1f hours' % frequency)
+    ltcbtcusd_value()
+    ltcbtcusd_time_balance()
+    genome = "'"+"".join(str(x) for x in storage.genome)+"'"
+    antecedent = "'"+ANTECEDENT+"'"
+    
+    ltcbtc = data[LTCBTC].price
+    ltcusd = data[LTCUSD].price
+    btcusd = data[BTCUSD].price
+    usd = portfolio.btc*btcusd + portfolio.ltc*ltcusd + portfolio.usd
+    fitness = usd/storage.ltcbtcusd[2]    
+    
+    log('New Genome = %s' % genome)    
+    log('ANTECEDENT = %s %.2f' % (antecedent, fitness)) 
+    
