@@ -1,0 +1,71 @@
+PAIR = pairs.btc_usd
+METHOD =  2
+
+def initialize():
+    
+    storage.reset(); log('storage.reset()')
+    
+def tick():
+
+    now = info.current_time
+    storage.buy_hold = storage.get('buy_hold', None)    
+    storage.sell_hold = storage.get('sell_hold', None)
+
+    if data[PAIR].ma(10) > data[PAIR].ma(90):
+        action = 1
+    else:
+        action = -1
+        
+    btc = portfolio.btc
+    usd = portfolio.usd
+    price = data[PAIR].price
+    
+    
+    ######################################################
+    ''' 'tick_count' METHOD '''
+    ######################################################
+    if METHOD == 1:
+        
+        
+        if info.tick == 0:
+            storage.buy_hold = 0
+            storage.sell_hold = 0    
+                
+        if (action == 1) and (usd/price > 0.02):
+            if storage.sell_hold <= 0:
+                buy(PAIR)
+                storage.buy_hold = 20 
+                # Hold for 20 ticks minimum after buying
+
+        if (action == -1) and (btc > 0.02):
+            if storage.buy_hold <= 0:
+                sell(PAIR)
+                storage.sell_hold = 20 
+                # Hold for 20 ticks minimum after selling
+
+        storage.buy_hold -= 1          
+        storage.sell_hold -= 1        
+
+ 
+    ######################################################
+    ''' 'unix_time' METHOD '''
+    ######################################################    
+    if METHOD == 2:
+        
+        
+        if info.tick == 0:
+            storage.buy_hold = now
+            storage.sell_hold = now   
+                
+        if (action == 1) and (usd/price > 0.02):
+            if now >= storage.sell_hold:
+                buy(PAIR)
+                storage.buy_hold = now+20*info.interval 
+                # Hold for 20 ticks minimum after buying
+
+        if (action == -1) and (btc > 0.02):
+            if now >= storage.buy_hold:
+                sell(PAIR)
+                storage.sell_hold = now+20*info.interval 
+                # Hold for 20 ticks minimum after selling
+    
