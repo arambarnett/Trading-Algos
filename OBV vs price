@@ -1,0 +1,59 @@
+import numpy as np
+import talib as ta
+
+
+PAIR = info.primary_pair
+
+PERIOD_OBV      = 50
+PERIOD_smooth   = 10  #zero to skip smoothing
+PERIOD_fast     = 5
+PERIOD_slow     = 10
+NORMALIZE       = True
+
+
+def OBV_histogram():
+    
+    C               = data[PAIR].period(PERIOD_OBV, 'close')
+    V               = data[PAIR].period(PERIOD_OBV, 'volume')  
+    OBV_array       = ta.OBV(C,V)
+    mean_volume     = sum(V)/PERIOD_OBV
+
+    if PERIOD_smooth >= 2: #smooth array once before processing
+        OBV_array = ta.MA(OBV_array, PERIOD_smooth)
+        
+    OBV_fast =  ta.MA(OBV_array, PERIOD_fast)
+    OBV_slow = ta.MA(OBV_array, PERIOD_slow)
+    OBV_fast_hist = (OBV_fast[-1]) / mean_volume
+    OBV_slow_hist = (OBV_slow[-1]) / mean_volume
+   
+    if NORMALIZE: # range bind histogram; only concider middle 20%
+        OBV_fast_hist = 5*np.clip(OBV_fast_hist, -20, 20)
+        OBV_slow_hist = 5*np.clip(OBV_slow_hist, -15, 15)
+
+       
+    return OBV_fast_hist, OBV_slow_hist
+
+
+def tick():
+
+    price = float(data[PAIR].price)
+    OBV_fast, OBV_slow = OBV_histogram()
+    
+
+    plot('OBV_fast', OBV_fast, secondary=True)
+    plot('OBV_slow', OBV_slow, secondary=True)    
+
+    holding_usd = holding_btc = False
+    if portfolio.usd > .1*price: 
+        holding_usd = True
+    if portfolio.btc > .1:
+        holding_btc = True
+        
+    if OBV_fast < OBV_slow:    
+        if holding_btc:
+            sell(PAIR)
+            
+    if OBV_fast > OBV_slow:  
+        if holding_usd:
+            buy(PAIR)
+            
