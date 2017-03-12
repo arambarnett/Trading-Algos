@@ -1,0 +1,101 @@
+# Strategy parameters section
+ 
+# data interval used for indicators
+data_interval = intervals._2h
+ 
+# strategy thresholds, additional value since indexes in code are 1-based
+buy_levels = (0, 0, 0, 9, 38)
+sell_levels = (0, 0, 16, 12.5)
+ 
+# EMA periods used in strategy along with their labels
+ema_periods = (
+    (2, "EMA_02"),
+    (5, "EMA_05"),
+    (15, "EMA_15"),
+    (30, "EMA_30"))
+ 
+# Traded currencies as lower case string
+ 
+# there's a small error in the platform, if you select LTC/BTC pair as default
+# then you have to include XXX/USD data as well where XXX is counter_key
+base_key = "ltc"
+counter_key = "usd"
+ 
+ 
+# You should not edit from here on, the following variables are calculated
+ 
+# set traded currencies and their pair
+base_currency = currencies[base_key]
+counter_currency = currencies[counter_key]
+pair_key = "%s_%s" % (base_key, counter_key)
+traded_pair = pairs[pair_key]
+ 
+# prepare strategy thresholds
+buy_ = tuple([Decimal(value) for value in buy_levels])
+sell_ = tuple([Decimal(value) for value in sell_levels])
+ 
+ 
+def initialize():
+    # Assume we start not invested and check we have funds in counter currency
+    storage.invested = False
+    assert portfolio[
+        counter_currency] > 0, "Funds error, start with some %s currency" % counter_key.upper()
+ 
+ 
+def tick():
+    # Init indicators and action variable
+    ma_data = data(interval=data_interval)[traded_pair]
+ 
+    ema = {}
+    for t in ema_periods:
+        size, label = t
+        ema[size] = ma_data.ema(size)
+        plot(label, ema[size])
+ 
+    action = None
+ 
+    # Strategy logic, possibly selects an action
+    if ((ema[15] - ema[5]) < buy_[1]):
+        if ((ema[30] - ema[15]) < buy_[2]):
+            if not storage.invested:
+                action = 1
+ 
+    if ((ema[15] - ema[2]) > (ema[2] / buy_[3])):
+        if not storage.invested:
+            action = 1
+ 
+    if (ema[2] > ema[15]) and (ema[5] > ema[15]):
+        if (ema[2] - ema[30]) < (ema[2] / buy_[4]):
+            if not storage.invested:
+                action = 1
+ 
+    if (ema[15] - ema[5]) > sell_[1]:
+        if (ema[15] - ema[5] + (ema[2] / sell_[2])) < (ema[2] / sell_[3]):
+            if storage.invested:
+                action = -1
+ 
+    # If there's an action perform it and update the invested status
+    if action:
+        if 1 == action:
+            buy(traded_pair)
+        elif -1 == action:
+            sell(traded_pair)
+ 
+        if portfolio[base_currency] > 0.1:
+            storage.invested = True
+        else:
+            storage.invested = False
+ 
+ 
+ 
+# ************************************************************************
+# 2-5-15-30 EMA Turbo Tune v1.0
+#
+# litepresence
+#
+# May, 23rd 2014
+#
+# LTC: LhqNNDa76NcEf7EWQVmDTeoy3MiENhpAJv
+#
+# coffeescript equivelent: https://cryptotrader.org/backtests/FGPHKPLyqjzuuY4WF
+# ************************************************************************
