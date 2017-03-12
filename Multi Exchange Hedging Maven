@@ -1,0 +1,133 @@
+PAIR = pairs.btc_usd
+SHORT = 8
+LONG = 120
+MULTI = True # True/False (True = check all 4 exchanges)
+
+BTCE = 3
+BITSTAMP = 2
+BITFINEX = 2
+KRAKEN = 1
+COINSETTER = 1
+
+def tick():
+
+    price_btce = data(exchange=exchanges.btce)[PAIR].price 
+    price_bitstamp = data(exchange=exchanges.bitstamp)[PAIR].price
+    price_bitfinex = data(exchange=exchanges.bitfinex)[PAIR].price
+    price_kraken = data(exchange=exchanges.kraken).btc_eur.price
+    price_coinsetter = data(exchange=exchanges.coinsetter)[PAIR].price    
+    
+    short_btce = data(exchange=exchanges.btce)[PAIR].ma(SHORT)    
+    short_bitstamp = data(exchange=exchanges.bitstamp)[PAIR].ma(SHORT)
+    short_bitfinex = data(exchange=exchanges.bitfinex)[PAIR].ma(SHORT)
+    short_kraken = data(exchange=exchanges.kraken).btc_eur.ma(SHORT)
+    short_coinsetter = data(exchange=exchanges.coinsetter)[PAIR].ma(SHORT)
+    
+    long_btce = data(exchange=exchanges.btce)[PAIR].ma(LONG)    
+    long_bitstamp = data(exchange=exchanges.bitstamp)[PAIR].ma(LONG)
+    long_bitfinex = data(exchange=exchanges.bitfinex)[PAIR].ma(LONG)  
+    long_kraken = data(exchange=exchanges.kraken).btc_eur.ma(LONG) 
+    long_coinsetter = data(exchange=exchanges.coinsetter)[PAIR].ma(LONG)     
+    
+    
+    plot('btce', price_btce)    
+    plot('bitstamp', Decimal(1.25)*price_bitstamp)
+    plot('bitfinex', Decimal(1.5)*price_bitfinex)  
+    plot('kraken', Decimal(0.9)*price_kraken)
+    plot('coinsetter', Decimal(0.6)*price_coinsetter)
+    
+    plot('short_btce', short_btce)    
+    plot('short_bitstamp', Decimal(1.25)*short_bitstamp) 
+    plot('short_bitfinex', Decimal(1.5)*short_bitfinex)
+    plot('short_kraken', Decimal(0.9)*short_kraken)
+    plot('short_coinsetter', Decimal(0.6)*short_coinsetter)
+    
+    plot('long_btce', long_btce)    
+    plot('long_bitstamp', Decimal(1.25)*long_bitstamp)
+    plot('long_bitfinex', Decimal(1.5)*long_bitfinex) 
+    plot('long_kraken', Decimal(0.9)*long_kraken)
+    plot('long_coinsetter', Decimal(0.6)*long_coinsetter)
+    
+    if info.tick ==0:
+        storage.start_assets = portfolio.usd/price_btce  
+    storage.price_btce = price_btce    
+    
+    
+    votes = 0
+    
+    btce = 0
+    bitstamp = 0
+    bitfinex = 0
+    kraken = 0
+    coinsetter = 0
+    
+    if short_btce > long_btce:
+        btce = 1.0
+    weight = float(BTCE)          
+
+    if MULTI:        
+        if short_bitstamp > long_bitstamp: 
+            bitstamp = 1.0
+        if short_bitfinex > long_bitfinex:
+            bitfinex = 1.0
+        if short_kraken > long_kraken:
+            kraken = 1.0
+        if short_coinsetter > long_coinsetter:
+            kraken = 1.0    
+        weight = float(BTCE + BITSTAMP + BITFINEX + KRAKEN + COINSETTER)      
+ 
+
+    votes = float(btce*BTCE + 
+            bitstamp*BITSTAMP + 
+            bitfinex*BITFINEX + 
+            kraken*KRAKEN +
+            coinsetter*COINSETTER)
+    
+
+    hedge = votes/weight
+    potential_btc = float(portfolio.btc + portfolio.usd/price_btce)
+    holding = float(portfolio.btc)/potential_btc            
+    order = 0.98*abs((hedge - holding)*potential_btc)
+
+
+    if order > 0.2:
+        if hedge > 0.80:
+            if portfolio.usd/price_btce > 0.2:
+                buy(PAIR)
+                log_votes(btce, bitstamp, bitfinex, kraken, coinsetter)
+        elif hedge < 0.20:
+            if portfolio.btc > 0.2:
+                sell(PAIR)
+                log_votes(btce, bitstamp, bitfinex, kraken, coinsetter)
+        else:    
+            if holding < 0.95*hedge:
+                buy(PAIR, amount=order)
+                log_votes(btce, bitstamp, bitfinex, kraken, coinsetter)
+            if holding > 1.05*hedge:
+                sell(PAIR, amount=order)
+                log_votes(btce, bitstamp, bitfinex, kraken, coinsetter)
+                
+def log_votes(btce, bitstamp, bitfinex, kraken, coinsetter):  
+    
+    log('btce %s' % btce)
+    log('bitstamp %s' % bitstamp)
+    log('bitfinex %s' % bitfinex)
+    log('kraken %s' % kraken)
+    log('coinsetter %s' % coinsetter)    
+
+def stop():
+    
+    price_btce = data(exchange=exchanges.btce)[PAIR].price 
+    
+    log('*********************************')
+    log('Multi Exchange Hedging Maven')
+    log('')
+    log('litepresence')
+    log('')
+    log('buy_and_hold %.4f' % (storage.start_assets*storage.price_btce))
+    log('usd_value: %.2f' % (portfolio.usd + portfolio.btc*price_btce))    
+    log('btc_start: %.2f' % (storage.start_assets))
+    log('btc_value: %.2f' % (portfolio.usd/price_btce + portfolio.btc))
+
+    
+    
