@@ -1,0 +1,123 @@
+import numpy as np
+import talib
+
+PAIR = info.primary_pair
+PERIOD = [9,3,3]
+j_now = [0, 0]
+TRESHOLD = 0.04
+
+
+def kdj():
+    
+    nil = 0.0000000001
+    
+    storage.rsv = storage.get('rsv', [])
+    storage.j = storage.get('j',[])
+    if info.tick == 0:
+        n = 0
+        while n < 250:
+            close = float(data[PAIR][-n].price)
+            lowest_low = min(data[PAIR][-n].period(PERIOD[0], 'low'))
+            highest_high = max(data[PAIR][-n].period(PERIOD[0], 'high'))
+            rsv = (100*(close - lowest_low + nil)) / (highest_high - lowest_low + nil)
+            storage.rsv.append(rsv)  
+            n+=1
+
+    else:        
+        close = float(data[PAIR].price)
+        lowest_low = min(data[PAIR].period(PERIOD[0], 'low'))
+        highest_high = max(data[PAIR].period(PERIOD[0], 'high'))
+        rsv = (100*(close - lowest_low + nil)) / (highest_high - lowest_low + nil)
+        storage.rsv.append(rsv)
+        storage.rsv = storage.rsv[-250:]
+        
+    rsv = np.array(storage.rsv)
+    
+
+    k = talib.MA(rsv, timeperiod=PERIOD[1], matype=1)
+    d = talib.MA(k, timeperiod=PERIOD[2], matype=1)
+    storage.j.append(3*k[-1] - 2*d[-1])
+    storage.j = storage.j[-250:]
+    j = np.array(storage.j)    
+    
+    
+    return k, d, j
+
+def initialize():
+    
+    storage.reset()
+
+    storage.last_buy = storage.get('last_buy', 0)
+    storage.last_sell = storage.get('last_sell', 0)
+    storage.stop_loss = storage.get('stop_loss', 0)
+    storage.last_order_price = storage.get('last_order_price', 1)
+    storage.j_was_above = storage.get('j_was_above', False)
+    storage.j_was_below = storage.get('j_was_below', False)
+
+
+def tick():    
+    
+
+#    MFI_now = data.btc_usd.mfi(30)
+    
+
+    
+#    plot('MFI', MFI_now, secondary=True)
+    
+#    log ('MFI = %s' % MFI_now)
+    
+    k, d, j = kdj()
+    
+#    plot('k', k[-1], secondary=True)
+#    plot('d', d[-1], secondary=True)
+#    plot('j', j[-1], secondary=True)    
+    
+    j_now = j[-1]
+    d_now = d[-1]
+    k_now = k[-1]
+    
+#    log('k_now = %s ' % k_now)
+#    log('d_now = %s ' % d_now)
+#    log('j_now = %s ' % j_now)
+    
+# offsets and thresholds
+#    plot('eighty', 80, secondary=True)
+#    plot('fifty', 50, secondary=True)
+#    plot('twenty', 20, secondary=True)
+#    if info.tick == 0: 
+#        plot('offset', 300, secondary=True)
+#    try:
+#        if info.tick == info.max_ticks -1:        
+#            lowest_low = min(data[PAIR].period(250, 'low'))
+#            highest_high = max(data[PAIR].period(250, 'high'))  
+#            offset2 = lowest_low - (highest_high-lowest_low)
+#            plot('offset2', offset2)
+#    except:
+#        pass
+
+    if storage.j_was_above == False and j_now > 80:
+        storage.j_was_above = True
+    
+    if storage.j_was_below == False and j_now < 20:
+        storage.j_was_below = True
+
+
+    if (j_now - d_now) <= 1 and (d_now - k_now) <= 1:
+        cross = True
+#        log('Cross!')
+    else:
+        cross = False
+
+    price_change = Decimal(abs(data.btc_usd.price-storage.last_order_price)/storage.last_order_price)
+    
+    if j_now <= 30 and cross == True and info.portfolio.usd > 5 and storage.j_was_below == True and price_change > TRESHOLD:
+        order = buy(pairs.btc_usd)
+        storage.j_was_below = False
+        storage.last_order_price = order.price
+
+            
+    if j_now >= 70 and cross == True and info.portfolio.btc > 0.01 and storage.j_was_above == True and price_change > TRESHOLD:
+        order = sell(pairs.btc_usd)
+        storage.j_was_above = False
+        storage.last_order_price = order.price
+
