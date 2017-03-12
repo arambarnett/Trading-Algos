@@ -1,0 +1,239 @@
+'''
+Iceberg Limit Orders v4.10
+https://discuss.tradewave.net/t/iceberg-limit-orders-v1-0-beta-litepresence/142/58
+
+litepresence
+
+This is a "plug in" which ONLY places orders.  
+Insert your trading code to "def tick():" and run on 1m candles. 
+'''
+
+'''ICEBERG USER CONTROLS ###########################################'''
+ICEBERG_ENGAGED     = True
+PLOT_SPREAD         = True
+LOG_ORDER_ARGUMENTS = True
+BACKTESTING         = True
+
+PERIOD_ICE_STD      = 20
+PERIOD_ICE_VWAP     = 10
+PERIOD_MINMAX       = 5
+X_SPREAD            = 1
+X_DISTRIBUTION      = 1
+
+MIN_ORDER           = 0.4
+MAX_ORDER           = 0.6
+MIN_TIMEOUT         = 25
+MAX_TIMEOUT         = 35
+QTY_ICEBERGS        = 3
+
+EXCHANGE_MINIMUM    = 0.015
+PAIR_1              = pairs.btc_usd
+FEE                 = fees[exchanges.btce][PAIR_1] # 0.002
+'''#################################################################'''
+
+def iceberg_orders_update(pair_1, period_ice_std, period_ice_vwap, x_spread, x_distribution, max_order,
+min_order, fee, plot_spread, log_order_arguments, exchange_minimum, period_minmax, 
+min_timeout, max_timeout):
+
+    portfolio.update()
+    import talib
+    import random
+
+    '''Calculate Spread'''
+    candle_1m_P1        = data(interval=60)[pair_1]
+    H_1m_P1             = candle_1m_P1.warmup_period('high')
+    L_1m_P1             = candle_1m_P1.warmup_period('low')
+    short_min           = talib.MIN(L_1m_P1, timeperiod=period_minmax)[-1]
+    short_max           = talib.MAX(H_1m_P1, timeperiod=period_minmax)[-1]
+    mean_price          = candle_1m_P1.vwap(period_ice_vwap)
+    standard_dev        = candle_1m_P1.std(period_ice_std)
+    spread              = standard_dev*Decimal(0.75*x_spread)
+    distribution        = float(standard_dev*Decimal(0.2*x_distribution))
+    mean_ask            = float(mean_price + spread)
+    mean_bid            = float(mean_price - spread)
+    mean_ask            = (mean_ask + short_max) / 2
+    mean_bid            = (mean_bid + short_min) / 2
+
+    '''Update Holdings'''
+    current_currency    = portfolio.usd
+    current_assets      = portfolio.btc   
+    holding_assets      = False
+    holding_currency    = False
+    if current_currency > Decimal(exchange_minimum)*mean_price:
+        holding_currency = True
+    if current_assets > exchange_minimum:
+        holding_assets = True    
+    potential_currency  = current_currency + (current_assets*mean_price)
+    potential_assets    = current_assets + (current_currency/mean_price)
+
+    '''Randomize Order Placement'''       
+    ask_price           = round((random.gauss(mean_ask, distribution)), 4)
+    bid_price           = round((random.gauss(mean_bid, distribution)), 4)
+    # Fold the Gaussian distributions if outside of range
+    if ask_price > short_max:
+        ask_price = round((short_max - (ask_price-short_max)), 4)
+    if bid_price < short_min:
+        bid_price = round((short_min + (short_min - bid_price)), 4)
+    # Redistribute if beyond mean_price
+    maximum = max(ask_price, short_max, mean_price)
+    minimum = min(bid_price, short_min, mean_price)
+    if ask_price < mean_price:
+        ask_price = round((random.uniform(float(mean_price), float(maximum))), 4)
+    if bid_price > mean_price:
+        bid_price = round((random.uniform(float(minimum), float(mean_price))), 4)
+
+    '''Randomize Order Size and Timeout'''
+    order_size          = round((max_order - random.random()*(max_order-min_order)), 3)
+    max_bid             = round((float(0.95)*(float(current_currency)/bid_price)/float(1 + fee)), 3)
+    ask_size            = round((order_size),3)
+    bid_size            = round((float(0.95)*order_size/float(1 + fee)), 3)
+    if order_size > max_bid:
+        bid_size        = max_bid
+    if order_size > current_assets:
+        ask_size        = current_assets 
+    order_timeout       = random.randint(min_timeout, max_timeout)
+
+    '''Plot Spread'''
+    if plot_spread:
+        plot    ('TOP_MARGIN', mean_ask)
+        plot    ('BOTTOM_MARGIN', mean_bid)
+        plot    ('MEAN_PRICE', mean_price)  
+        plot    ('MAX', short_max)
+        plot    ('MIN', short_min)
+        plot    ('MAX', mean_ask)
+        plot    ('MIN', mean_bid)
+
+    ''' Log First Round Sample Order Arguments'''
+    if log_order_arguments and (info.tick==0):  
+        log('TEST REPORT: ORDER ARGUMENTS')
+        log('ask_size: %s' % ask_size)
+        log('ask_price: %s' % ask_price)
+        log('bid_size: %s' % bid_size)        
+        log('bid_price: %s' % bid_price)
+        log('order_timeout: %s' % order_timeout)
+        log('holding_assets: %s' % holding_assets)
+        log('holding_currency: %s' % holding_currency)
+        log('*******************************')
+
+    return(current_currency, current_assets, mean_price, potential_currency, potential_assets, 
+        ask_size, bid_size, ask_price, bid_price, order_timeout, holding_assets, holding_currency)
+
+def iceberg_order(can_buy, can_sell, qty_icebergs, backtesting, pair_1):
+    if info.tick == 0:
+        log('******* ICEBERG ENGAGED *******')
+        log('*******************************')
+    import time
+    from datetime import datetime, timedelta    
+    storage.last_action = storage.get('last_action', None)
+    storage.cumulative_trades = storage.get('cumulative_trades', 0)
+    storage.log_no_action_taken = storage.get('log_no_action_taken', 0)
+    if not can_buy and not can_sell:
+        if not storage.log_no_action_taken:
+            log('*******************************')            
+            log('**** NO ACTION TO BE TAKEN ****')
+            log('*******************************')               
+            storage.log_no_action_taken = time.time()
+
+    else:
+        iceberg_order_number = 0
+        end_time = time.time()
+        begin_time = time.time()
+        while 1:
+            if end_time - begin_time > 50:
+                break
+            '''Iceberg Orders Update'''
+            (current_currency, current_assets, mean_price, potential_currency, potential_assets, 
+                ask_size, bid_size, ask_price, bid_price, order_timeout, holding_assets, 
+                holding_currency) = iceberg_orders_update(PAIR_1, PERIOD_ICE_STD, PERIOD_ICE_VWAP, 
+                X_SPREAD, X_DISTRIBUTION, MAX_ORDER, MIN_ORDER, FEE, PLOT_SPREAD, LOG_ORDER_ARGUMENTS, 
+                EXCHANGE_MINIMUM, PERIOD_MINMAX, MIN_TIMEOUT, MAX_TIMEOUT)
+            delay = int(order_timeout/Decimal(qty_icebergs))   
+
+            if can_buy:
+                if storage.last_action is not 1:
+                    storage.cumulative_trades += 1
+
+                    elapsed = round((time.time() - storage.log_no_action_taken), 2)
+                    sec = timedelta(seconds=int(elapsed))
+                    d = datetime(1,1,1) + sec
+                    log("%d:%d:%d:%d D:H:M:S since last order" % (d.day-1, d.hour, d.minute, d.second))                    
+                    log('%s Seconds since last order' % elapsed)
+                    log('Buying, Trade Number: %s' % storage.cumulative_trades)
+                storage.last_action = 1    
+                if holding_currency:
+                    storage.log_no_action_taken = 0                
+                    iceberg_order_number += 1
+                    log("Iceberg BID Number %s at %s" % (iceberg_order_number, bid_price))
+                    log("Timeout: %s Delay until next order: %s" % (order_timeout, delay))
+                    buy(pair_1, amount=bid_size, price=bid_price, timeout=order_timeout)
+                else:
+                    break
+                if not backtesting:
+                    time.sleep(delay)    
+                end_time = time.time()    
+
+            if can_sell:
+                if storage.last_action is not -1:
+                    storage.cumulative_trades += 1
+                    elapsed = round((time.time() - storage.log_no_action_taken), 2)
+                    sec = timedelta(seconds=int(elapsed))
+                    d = datetime(1,1,1) + sec
+                    log("%d:%d:%d:%d D:H:M:S since last order" % (d.day-1, d.hour, d.minute, d.second))                    
+                    log('%s Seconds since last order' % elapsed)                   
+                    log('Selling, Trade Number: %s' % storage.cumulative_trades)
+                storage.last_action = -1   
+                if holding_assets:
+                    storage.log_no_action_taken = 0            
+                    iceberg_order_number += 1
+                    log("Iceberg ASK Number %s at %s" % (iceberg_order_number, ask_price))  
+                    log("Timeout: %s Delay until next order: %s" % (order_timeout, delay))                    
+                    sell(pair_1, amount=ask_size, price=ask_price, timeout=order_timeout)                        
+                else:
+                    break
+                if not backtesting:
+                    time.sleep(delay) 
+                end_time = time.time()
+
+            if not can_buy and not can_sell:
+                break  
+
+def iceberg_off(can_buy, can_sell, pair_1, exchange_minimum):
+    if info.tick == 0:
+        log('ICEBERGS OFF - TEST TRADE LOGIC')
+        log('*******************************')            
+    candle   = data(interval=60)[pair_1]        
+    last     = Decimal(candle.warmup_period('close')[-1])
+    if can_buy and (portfolio.usd/last > exchange_minimum):
+        buy(pair_1)
+    if can_sell and (portfolio.btc > exchange_minimum):
+        sell(pair_1)    
+
+def tick():
+
+    '''### INSERT YOUR LOGIC HERE ###############################'''
+    buysell_every_x_minutes = 3    
+    '''Randomly Buy or Sell every X minutes for testing purposes''' 
+    import random
+    can_buy = False
+    can_sell = False
+    if info.tick % buysell_every_x_minutes == 0:
+        action = random.randint(-1, 1) 
+        if action == 1:
+
+            can_buy = True
+
+        if action == -1:
+
+            can_sell = True
+
+    '''##########################################################'''
+
+    iceberg_orders_update(PAIR_1, PERIOD_ICE_STD, PERIOD_ICE_VWAP, X_SPREAD, X_DISTRIBUTION, MAX_ORDER, 
+        MIN_ORDER, FEE, PLOT_SPREAD, LOG_ORDER_ARGUMENTS, EXCHANGE_MINIMUM, PERIOD_MINMAX,
+        MIN_TIMEOUT, MAX_TIMEOUT)    
+
+    if ICEBERG_ENGAGED:
+        iceberg_order(can_buy, can_sell, QTY_ICEBERGS, BACKTESTING, PAIR_1)    
+
+    else:
+        iceberg_off(can_buy, can_sell, PAIR_1, EXCHANGE_MINIMUM)
