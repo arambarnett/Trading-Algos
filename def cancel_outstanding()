@@ -1,0 +1,64 @@
+'''
+cancel_outstanding()
+
+litepresence June 2016
+
+https://discuss.tradewave.net/t/cancel-all-outstanding-orders
+'''
+
+# cancels pending orders not filled, timed_out, or already cancelled
+# self contained; no dependencies outside of the definition
+# hashed storage object name; it won't interfere with anything else; plug-and-play
+# no need to create a storage list at time of ordering for this to work
+# no library import
+# nothing to add to initialize()
+# will cancel orders placed before auto restart
+
+
+PAIR = pairs.btc_usd
+
+def cancel_outstanding(): 
+    version = 'cancel_outstanding() v4.04'
+    orders = str(abs(hash(version)))
+    cancellations = 0
+    storage[orders]=storage.get(orders, [])
+    for o in get_orders():
+        if o not in storage[orders]
+            storage[orders].append(o.order_id)
+    for order_id in storage[orders]:
+        try:
+            o = get_order(order_id)
+            if not any([o.filled, o.cancelled, o.timed_out]):
+                cancel_order(order_id)
+                cancellations += 1
+        except: pass
+    if cancellations > 0:
+        log('%s aborted %s pending' % (version, cancellations))
+    portfolio.update()
+
+def tick():
+    
+    cancel_outstanding()
+
+    # BASIC SMA CROSS ALGO FOR DEMONSTRATION
+    price = float(data[PAIR].price)
+    short_ma = float(data[PAIR].ma(10))
+    long_ma = float(data[PAIR].ma(90))
+    
+    holding_btc = holding_usd = False
+    if portfolio.btc > 0.1: holding_btc = True
+    if portfolio.usd > (0.1*price): holding_usd = True
+    
+    if short_ma > long_ma:
+        if holding_usd:
+            try: buy(PAIR)
+            except: pass
+    
+    elif short_ma < long_ma:
+        if holding_btc:
+            try: sell(PAIR)
+            except: pass
+
+    plot('short_ma', short_ma) 
+    plot('long_ma', long_ma)
+
