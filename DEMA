@@ -1,0 +1,50 @@
+import talib as t
+
+# Parameters 
+THRESHOLD = 0.01
+DEMASMALL = 25
+DEMABIG = 35
+
+storage.invested = storage.get('invested', None)
+
+def tick():
+    
+    # Aggregation, Instrument, Data Array
+    IN              = 7200 # Set to Tick Interval( 1 Hour = 3600 Seconds)
+    instrument      = pairs.btc_usd
+    C               = data(interval=IN)[instrument].warmup_period('close')
+    
+    DEMA1 = t.DEMA(C, timeperiod = DEMASMALL)
+    DEMA2 = t.DEMA(C, timeperiod = DEMABIG)
+
+    DEMA1_now = DEMA1[-1]
+    DEMA2_now = DEMA2[-1]
+    
+    # Calculate a percentage difference between the two lines
+    diff = 100 * (DEMA1_now - DEMA2_now) / ((DEMA1_now + DEMA2_now) / 2)
+    
+    # Checks if you have more BTC or USD in accounts and sets storage.invested to true/false
+    if portfolio.btc * data[info.primary_pair].close >= portfolio.usd:
+        storage.invested = True
+    else:
+        storage.invested = False
+    
+    # Check & see if threshold is cross
+    if diff >= THRESHOLD and not storage.invested:
+        longbuy()
+
+    elif diff <= -THRESHOLD and storage.invested:
+        shortsell()
+    
+    # plot data
+    plot('DEMA1', DEMA1_now)
+    plot('DEMA2', DEMA2_now)
+    log(data.btc_usd.price)
+
+def longbuy():
+    buy(info.primary_pair)
+    storage.invested = True
+    
+def shortsell():
+    sell(info.primary_pair)
+    storage.invested = False
