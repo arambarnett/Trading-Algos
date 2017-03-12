@@ -1,0 +1,108 @@
+import talib
+
+def tick():
+    
+    warm_high                           = data.btc_usd.warmup_period('high')
+    warm_low                             = data.btc_usd.warmup_period('low')
+    
+                   
+                   
+
+    SAREXT                              = talib.SAREXT(warm_high, warm_low, 
+        startvalue                      = 0,
+        offsetonreverse                 = 0,
+        accelerationinitlong            = 0.02,
+        accelerationlong                = 0.02,
+        accelerationmaxlong             = 0.2,
+        accelerationinitshort           = 0.02,
+        accelerationshort               = 0.02,
+        accelerationmaxshort            = 0.2        
+        )
+    SAREXT = abs(SAREXT[-1])
+    
+    SAREXT_test1                         = talib.SAREXT(warm_high, warm_low, 
+        startvalue                      = 0,
+        offsetonreverse                 = 0.00,
+        accelerationinitlong            = 0.00005,
+        accelerationlong                = 0.00005,
+        accelerationmaxlong             = 0.0005,
+        accelerationinitshort           = 0.00005,
+        accelerationshort               = 0.00005,
+        accelerationmaxshort            = 0.0005
+        )
+    SAREXT_test1 = abs(SAREXT_test1[-1])
+    
+    SAREXT_test2                         = talib.SAREXT(warm_high, warm_low, 
+        startvalue                      = 0,
+        offsetonreverse                 = 0,
+        accelerationinitlong            = 0.00005,
+        accelerationlong                = 0.00005,
+        accelerationmaxlong             = 0.0005,
+        accelerationinitshort           = 0.00005,
+        accelerationshort               = 0.00005,
+        accelerationmaxshort            = 0.0005
+        )
+    SAREXT_test2 = abs(SAREXT_test2[-1])
+    
+    
+    SAR                                 = talib.SAR(warm_high, warm_low,
+        acceleration                    = 0.00005,
+        maximum                         = 0.0005
+        )
+    SAR = SAR[-1]
+        
+    plot('SAR', (SAR - 5))    
+
+
+    plot('SAREXT', SAREXT)
+    plot('SAREXT_test1', SAREXT_test1)
+    plot('SAREXT_test2', SAREXT_test2)
+
+    '''
+    high, low 
+        real values arrays, both have to be the same size
+    startvalue  
+        Start value and direction. 0 for Auto, >0 for Long, <0 for Short 
+        real number (optional)
+        default: 0
+        valid range: min=-3e+037 max=3e+037
+    offsetonreverse
+        Percent offset added/removed to initial stop on short/long reversal 
+        real number (optional)
+        default: 0
+        valid range: min=0 max=3e+037
+    accelerationinitlong    
+        Acceleration Factor initial value for the Long direction 
+        real number (optional)
+        default: 0.02
+        valid range: min=0 max=3e+037
+    accelerationlong
+        Acceleration Factor for the Long direction
+        real number (optional)
+        default: 0.02
+        valid range: min=0 max=3e+037
+    accelerationmaxlong
+        Acceleration Factor maximum value for the Long direction
+        real number (optional)
+        default: 0.2
+        valid range: min=0 max=3e+037
+    accelerationinitshort 
+        Acceleration Factor initial value for the Short direction
+        real number (optional)
+        default: 0.02
+        valid range: min=0 max=3e+037
+    accelerationshort 
+        Acceleration Factor for the Short direction
+        real number (optional)
+        default: 0.02
+        valid range: min=0 max=3e+037
+    accelerationmaxshort 
+        Acceleration Factor maximum value for the Short direction
+        real number (optional)
+        default: 0.2
+        valid range: min=0 max=3e+037
+
+    returns:  real values array
+    
+    more info: http://search.cpan.org/~kmx/Finance-TA-v0.4.1/TA.pod
+    '''
