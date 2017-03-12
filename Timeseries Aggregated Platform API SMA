@@ -1,0 +1,29 @@
+
+def timeseries_smooth(interval, pair, period, depth):
+
+
+    ratio = float(interval)/info.interval
+    ma_not_smooth = float(data(interval=interval, smooth=False)[pair].ma(period))
+    storage.stepwise_ma=storage.get('stepwise_ma',ma_not_smooth)
+    if info.tick%ratio==0:
+        storage.stepwise_ma=ma_not_smooth
+    ma_smooth = float(data(interval=interval)[pair][depth].ma(period))
+    ma_smooth_prev = float(data(interval=interval)[pair][depth-1].ma(period))
+    timeseries = ma_smooth + 0.5*(ma_smooth - ma_smooth_prev) 
+    corrected_timeseries = timeseries
+    if info.tick<ratio:
+        corrected_timeseries = (timeseries*info.tick + ma_smooth*(ratio-info.tick))/ratio
+
+    return ma_not_smooth,ma_smooth,ma_smooth_prev,timeseries,corrected_timeseries
+
+
+def tick():
+    
+    (ma_not_smooth,ma_smooth,ma_smooth_prev,timeseries,corrected_timeseries
+        )= timeseries_smooth(43200,info.primary_pair,30,0)
+        
+    plot('ma_smooth', ma_smooth)    
+    plot('ma_not_smooth', ma_not_smooth)
+    plot('timeseries_smooth', timeseries)    
+    plot('corrected_timeseries', corrected_timeseries)
+    plot('stepwise_ma', storage.stepwise_ma)
