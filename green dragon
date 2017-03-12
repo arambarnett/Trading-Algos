@@ -1,0 +1,54 @@
+
+PAIR = pairs.btc_usd
+
+def tick():
+    
+    ma2 = data[PAIR].ma(2)
+    ma30 = data[PAIR].ma(30)
+    ma60 = data[PAIR].ma(60)
+    ma90 = data[PAIR].ma(90)
+    ma150 = data[PAIR].ma(150)
+    ma30i = data[PAIR][-1].ma(30)
+    ma60i = data[PAIR][-1].ma(60)
+    ma90i = data[PAIR][-1].ma(90)
+    ma150i = data[PAIR][-1].ma(150)    
+    
+    
+    # GREEN DRAGON                             CURRENT STATE 6/21/2015
+    
+    green_dragon = 0
+    if (ma30 > ma60):
+        green_dragon += 1
+    if (ma60 > ma90):
+        green_dragon += 1
+    if (ma90 > ma150):
+        green_dragon += 1
+    if (ma2 > ma30):                     
+        green_dragon += 1
+    if (ma30 > Decimal(1.000) * ma30i):    
+        green_dragon += 1
+    if (ma60 > Decimal(1.000) * ma60i):  
+        green_dragon += 1
+    if (ma90 > Decimal(1.000) * ma90i):   
+        green_dragon += 1
+    
+    moon = float(data[PAIR].price)
+        
+    if green_dragon == 7:
+        green_dragon = 20
+        moon = 0
+    
+    
+            
+    plot('moon', moon)
+    plot('moon', data[PAIR].price)
+    plot('green_dragon', green_dragon, secondary=True)
+
+    plot('o', 0, secondary=True)
+    plot('0', 0)
+    
+    
+    
+    if info.tick == 0:
+        plot('z', -20, secondary=True)
+        plot('zz', 1500)
