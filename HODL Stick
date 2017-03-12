@@ -1,0 +1,61 @@
+import numpy as np
+
+PAIR = info.primary_pair
+PERIOD1 = 180
+PERIOD2 = 200
+
+def wick_power(timeperiod):
+    
+    O = data[PAIR].period(timeperiod,'open')              
+    H = data[PAIR].period(timeperiod,'high')             
+    L = data[PAIR].period(timeperiod,'low')  
+    C = data[PAIR].period(timeperiod,'close')  
+
+    nil = 0.000000001    
+
+    candle_height   = abs(H - L)    + nil
+    body_height     = abs(O - C)    + nil   
+    top_body        = np.max([O, C])                                 
+    bottom_body     = np.min([O, C])                                 
+    top_wick        = H - top_body  + nil                           
+    bottom_wick     = bottom_body - L + nil     
+    
+    wick_total = bottom_wick+top_wick
+    wick_ratio = top_wick / wick_total
+
+    mean_body_height = sum(body_height)/timeperiod
+    body_power = body_height/mean_body_height
+    
+    z = sum(wick_ratio*body_power)/timeperiod
+
+    return clamp(z, 0, 1)
+    
+def clamp(n, minn, maxn):
+    if minn<=n<=maxn: return n 
+    elif n>maxn: return maxn 
+    else: return minn
+
+
+
+def tick():
+
+    wick_1 = wick_power(PERIOD1)
+    wick_2 = wick_power(PERIOD2)   
+    
+    price = float(data[PAIR].price)
+    holding_btc = holding_usd = 0
+    if portfolio.btc > 0.1:
+        holding_btc = 1
+    if portfolio.usd > 0.1*price:
+        holding_usd = 1
+    
+    if wick_1 > wick_2:
+        if holding_usd:
+            buy(PAIR)
+    if wick_1 < wick_2:
+        if holding_btc:
+            sell(PAIR)
+    
+    
+    plot('wick_1', wick_1, secondary=True)
+    plot('wick_2', wick_2, secondary=True)
