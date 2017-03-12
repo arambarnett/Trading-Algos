@@ -1,0 +1,69 @@
+import talib as ta
+import numpy as np
+import math as ma
+import time as t
+
+PERIOD          = 100
+AGGREGATION     = 43200
+PAIR            = info.primary_pair
+DEPTH           = 250
+
+def initialize():
+    storage.reset()
+    log('storage.reset()')
+    
+
+def smooth(label, array, aggregation, depth):
+    
+    ratio = int(ma.ceil(aggregation/info.interval))
+    if ratio == 1: 
+        return array
+    else:    
+        ratio = min(ratio, (info.tick+1)) 
+        smooth = '%s_smooth' % label
+        storage[smooth] = storage.get(smooth, [[],[]])
+        if info.tick == 0:
+            storage[smooth][0] = list(array)
+            storage[smooth][1] = list(ta.MA(array, ratio))
+        else:
+            storage[smooth][0].append(array[-1])
+            storage[smooth][0] = storage[smooth][0][-ratio:]    
+            storage[smooth][1].append(sum(storage[smooth][0])/ratio)
+            storage[smooth][1] = storage[smooth][1][-depth:]    
+        return np.array(storage[smooth][1])    
+        
+def tick():
+    
+    C = data(interval=AGGREGATION)[PAIR].warmup_period('close')
+    
+    t1 = t.time()
+    api_smooth = data(interval=AGGREGATION)[PAIR].ma(PERIOD)
+    t2 = t.time()
+    sma_wiggly = ta.MA(C, timeperiod=PERIOD, matype=0) 
+    t3 = t.time()
+    sma_smooth  = smooth('sma_smooth', sma_wiggly, AGGREGATION, DEPTH)
+    t4 = t.time()
+
+    
+    storage.elapsed = storage.get('elapsed', [0,0,0])
+    storage.elapsed[0] = storage.elapsed[0] + (t2-t1)
+    storage.elapsed[1] = storage.elapsed[1] + (t3-t2)
+    storage.elapsed[2] = storage.elapsed[2] + (t4-t3)
+    
+    if info.tick == 0:
+        log('aggregation.: %s' % AGGREGATION)
+        log('tick size...: %s' % info.interval)
+        
+    plot('sma_api_smooth', api_smooth)    
+    plot('sma_wiggly', sma_wiggly[-1])
+    plot('sma_smooth', sma_smooth[-1])
+
+
+def stop():
+    
+    log('ticks.........: %s' % info.max_ticks)
+    log('api elapased..: %.3f seconds' % storage.elapsed[0])
+    log('talib elapsed.: %.3f seconds' % storage.elapsed[1])
+    log('smoothing.....: %.3f seconds' % storage.elapsed[2])
+    smooth_talib = storage.elapsed[1] + storage.elapsed[2]
+    log('smooth talib..: %.3f seconds' % smooth_talib)
