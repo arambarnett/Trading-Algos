@@ -1,0 +1,366 @@
+import time
+
+PAIR                        = pairs.btc_usd
+SAR_PLOT1                    = True  # False turns off SAR plot
+SAR_AGGREGATION1             = 3600  # Match to tick = no auto adjust  
+SAR_SENSITIVITY1             = 1     # whole, default 2
+SAR_RISE_LOOKBACK1           = 0     # 0 = MAX, else whole # period
+SAR_RISE_INITIAL1            = 0.02  # Inital Rising Acceleration
+SAR_RISE_ACCELERATION1       = 0.02  # Rising Acceleration
+SAR_RISE_MAX1                = 0.2   # Maximum Rising Acceleration
+SAR_FALL_LOOKBACK1           = 0     # 0 = MAX, else whole # period
+SAR_FALL_INITIAL1            = 0.02  # Initial Falling Acceleration
+SAR_FALL_ACCELERATION1       = 0.02  # Falling Acceleration
+SAR_FALL_MAX1                = 0.2   # Maximum Falling Acceleration
+
+SAR_PLOT2                    = True  # False turns off SAR plot
+SAR_AGGREGATION2             = 3600  # Match to tick = no auto adjust  
+SAR_SENSITIVITY2             = 1     # whole, default 2
+SAR_RISE_LOOKBACK2           = 0     # 0 = MAX, else whole # period
+SAR_RISE_INITIAL2            = 0.03  # Inital Rising Acceleration
+SAR_RISE_ACCELERATION2       = 0.03  # Rising Acceleration
+SAR_RISE_MAX2                = 0.3   # Maximum Rising Acceleration
+SAR_FALL_LOOKBACK2           = 0     # 0 = MAX, else whole # period
+SAR_FALL_INITIAL2            = 0.03  # Initial Falling Acceleration
+SAR_FALL_ACCELERATION2       = 0.03  # Falling Acceleration
+SAR_FALL_MAX2                = 0.3   # Maximum Falling Acceleration
+
+SAR_PLOT3                    = True  # False turns off SAR plot
+SAR_AGGREGATION3             = 3600  # Match to tick = no auto adjust  
+SAR_SENSITIVITY3             = 1     # whole, default 2
+SAR_RISE_LOOKBACK3           = 0     # 0 = MAX, else whole # period
+SAR_RISE_INITIAL3            = 0.04  # Inital Rising Acceleration
+SAR_RISE_ACCELERATION3       = 0.04  # Rising Acceleration
+SAR_RISE_MAX3                = 0.4   # Maximum Rising Acceleration
+SAR_FALL_LOOKBACK3           = 0     # 0 = MAX, else whole # period
+SAR_FALL_INITIAL3            = 0.04  # Initial Falling Acceleration
+SAR_FALL_ACCELERATION3       = 0.04  # Falling Acceleration
+SAR_FALL_MAX3                = 0.4   # Maximum Falling Acceleration
+
+def parabolic_sar(pair, sar_plot, aggregation, sensitivity,
+rise_lookback, rise_initial, rise_acceleration, rise_max,
+fall_lookback, fall_initial, fall_acceleration, fall_max):
+    
+    import time
+    import math    
+    
+    start_time = time.time()
+    
+    ''' Seed psuedo random 24 character hash string '''
+    fall_hash = 2**(1/2.0)*fall_max + 3**(1/2.0)*fall_acceleration + 5**(1/2.0)*(fall_initial+1)
+    rise_hash = 2**(1/3.0)*rise_max + 3**(1/3.0)*rise_acceleration + 5**(1/3.0)*(rise_initial+1)
+    lookback_hash = 2**(1/2.0)*fall_lookback + 3**(1/2.0)*rise_lookback + 5**(1/2.0)*sensitivity
+    pair_agg_hash = int(10**25*pair**(1/2.0) / aggregation**(1/2.0))
+    sar_hash = str(int(10**25*Decimal((fall_hash+lookback_hash)/rise_hash))+pair_agg_hash)[-24:] 
+
+    ''' Initialize Stored Variables '''    
+    extreme_point           = 'parabolic_sar_extreme_point_'+sar_hash
+    acceleration            = 'parabolic_sar_acceleration_'+sar_hash
+    direction               = 'parabolic_sar_direction_'+sar_hash
+    previous                = 'parabolic_sar_previous_'+sar_hash
+    storage[extreme_point]  = storage.get(extreme_point, 0)
+    storage[acceleration]   = storage.get(acceleration, 0)
+    storage[direction]      = storage.get(direction, 0)     
+    storage[previous]       = storage.get(previous, 0)  
+    
+
+    ''' Auto Adjust Thresholds Based on Aggregation '''
+    power                   = 1.235  # Bigger reduces SAR crosses
+    aggregation_ratio       = aggregation/float(info.interval)
+    power_ratio             = aggregation_ratio**power
+
+    sensitivity             = int(math.ceil(sensitivity))
+    rise_lookback           = int(rise_lookback*aggregation_ratio)
+    rise_initial            = rise_initial/power_ratio
+    rise_acceleration       = rise_acceleration/power_ratio
+    rise_max                = rise_max*aggregation_ratio
+    fall_lookback           = int(fall_lookback*aggregation_ratio)
+    fall_initial            = fall_initial/power_ratio
+    fall_acceleration       = fall_acceleration/power_ratio
+    fall_max                = fall_max*aggregation_ratio
+    
+    ''' Prevent Rattle on 1m ticks '''
+    offset                  = 0
+    if info.interval == 60:
+        fall_initial        = 0
+        rise_initial        = 0
+        offset              = 0.002
+        
+    ''' Log Adjusted Thresholds and persistent variable names on 1st tick '''
+    if 1:
+        if info.tick == 0:
+            log('storage.' + extreme_point)
+            log('storage.' + acceleration)
+            log('storage.' + direction)
+            log('storage.' + previous)        
+            log('tick size....: %s' % info.interval)
+            log('aggregation..: %s' % aggregation)        
+            log('agg_ratio....: %s' % aggregation_ratio)
+            log('power........: %s' % power)
+            log('power_ratio..: %.2f' % power_ratio)
+            log('sensitivity..: %s' % sensitivity)
+            log('rise_lookback: %s' % rise_lookback)
+            log('rise_initial.: %s' % rise_initial)
+            log('rise_accel...: %s' % rise_acceleration)
+            log('rise_max.....: %s' % rise_max)
+            log('fall_lookback: %s' % fall_lookback)
+            log('fall_initial.: %s' % fall_initial)
+            log('fall_accel...: %s' % fall_acceleration)
+            log('fall_max.....: %s' % fall_max)
+            log('offset.......: %s' % offset)
+    
+    '''  High, Low, and Close '''    
+    high    = data(interval=aggregation)[pair].period(2, 'high') 
+    low     = data(interval=aggregation)[pair].period(2, 'low')     
+    close   = data(interval=aggregation)[pair].period(2, 'close') 
+
+    ''' Build array of candles to look for SAR cross '''
+    low_array   = []
+    high_array  = []
+    for z in range(sensitivity, 0, -1):
+        low_array.append(low[-z])
+        high_array.append(high[-z])
+
+    ''' Determine if inital SAR is Rising or Falling '''        
+    if info.tick == 0:        
+        if close[-1] > close[-2]:
+            storage[direction]       = 1
+            storage[previous]        = low[-2]
+            storage[extreme_point]   = max(high_array)
+            storage[acceleration]    = rise_initial
+        else:            
+            storage[direction]       = -1
+            storage[previous]        = high[-2]
+            storage[extreme_point]   = min(low_array)
+            storage[acceleration]    = -fall_initial   
+
+    ''' Calculate Rising SAR '''
+    # Define New SAR            
+    if storage[direction] == 1:            
+        sar = storage[previous] + storage[acceleration]*(
+            storage[extreme_point] - storage[previous]) 
+        # Update acceleration factor if EP is breached        
+        if high[-1] > storage[extreme_point]:
+            storage[extreme_point] = high[-1]
+            storage[acceleration] = storage[acceleration] + rise_acceleration
+            if storage[acceleration] > rise_max:
+                storage[acceleration] = rise_max   
+        # Define lookback price based on period        
+        if fall_lookback == 0: 
+            lookback = storage[extreme_point]
+        else:
+            lookback = []    
+            for z in range(fall_lookback):
+                lookback.append(high[-(z+1)])
+            lookback = max(lookback)
+            lookback = min(lookback, storage[extreme_point])
+        # If new SAR cross, then Stop and Reverse
+        if min(low_array) < sar:
+            storage[direction] = -2
+            storage[acceleration] = -fall_initial
+            sar = lookback * float(1 + offset)   
+            #log('***** SAR CROSS *****')        
+
+    ''' Calculate Falling SAR '''
+    # Define New SAR       
+    if storage[direction] == -1:        
+        sar = storage[previous] + storage[acceleration]*(
+            storage[previous] - storage[extreme_point])   
+        # note storage.AF is negative in this instance  
+        # Update acceleration factor if EP is breached  
+        if low[-1] < storage[extreme_point]:
+            storage[extreme_point] = low[-1]
+            storage[acceleration] = storage[acceleration] - fall_acceleration 
+            if storage[acceleration] < -fall_max:
+                storage[acceleration] = -fall_max
+        # Define lookback price based on period     
+        if rise_lookback  == 0: 
+            lookback = storage[extreme_point]
+        else:
+            lookback = []    
+            for z in range(rise_lookback):
+                lookback.append(L[-(z+1)])
+            lookback = min(lookback)
+            lookback = max(lookback, storage[extreme_point])  
+        # If new SAR cross, then Stop and Reverse
+        if max(high_array) > sar:
+            storage[direction] = 1
+            storage[acceleration] = rise_initial 
+            sar = lookback * float(1 - offset)
+            #log('***** SAR CROSS *****')        
+            
+    ''' Update Direction and Prior SAR '''
+    if storage[direction] == -2:
+        storage[direction] = -1
+    storage[previous] = sar  
+    
+
+    
+    ''' Log Tick Time ''' 
+    finish_time = time.time()
+    tick_time = round((finish_time - start_time), 5)
+    #log(tick_time)
+    
+    return sar    
+
+
+def tick():
+    
+    if info.tick == 0:
+        storage.begin_time = time.time()
+    
+    sar1 = parabolic_sar(PAIR, SAR_PLOT1, 
+                        SAR_AGGREGATION1, 
+                        SAR_SENSITIVITY1,
+                        SAR_RISE_LOOKBACK1, 
+                        SAR_RISE_INITIAL1, 
+                        SAR_RISE_ACCELERATION1, 
+                        SAR_RISE_MAX1,
+                        SAR_FALL_LOOKBACK1, 
+                        SAR_FALL_INITIAL1, 
+                        SAR_FALL_ACCELERATION1, 
+                        SAR_FALL_MAX1)
+                        
+    sar2 = parabolic_sar(PAIR, SAR_PLOT2, 
+                        SAR_AGGREGATION2, 
+                        SAR_SENSITIVITY2,
+                        SAR_RISE_LOOKBACK2, 
+                        SAR_RISE_INITIAL2, 
+                        SAR_RISE_ACCELERATION2, 
+                        SAR_RISE_MAX2,
+                        SAR_FALL_LOOKBACK2, 
+                        SAR_FALL_INITIAL2, 
+                        SAR_FALL_ACCELERATION2, 
+                        SAR_FALL_MAX2)
+                        
+    sar3 = parabolic_sar(PAIR, SAR_PLOT3, 
+                        SAR_AGGREGATION3, 
+                        SAR_SENSITIVITY3,
+                        SAR_RISE_LOOKBACK3, 
+                        SAR_RISE_INITIAL3, 
+                        SAR_RISE_ACCELERATION3, 
+                        SAR_RISE_MAX3,
+                        SAR_FALL_LOOKBACK3, 
+                        SAR_FALL_INITIAL3, 
+                        SAR_FALL_ACCELERATION3, 
+                        SAR_FALL_MAX3)                        
+
+    signal = float(data[PAIR].ma(2))
+
+    current_max_assets = float(portfolio.btc + 
+                portfolio.usd/data[PAIR].price)
+    current_max_currency = float(portfolio.usd + 
+                portfolio.btc*data[PAIR].price)
+    
+    hold_30 = .3*current_max_assets
+    hold_40 = .4*current_max_assets
+    hold_50 = .5*current_max_assets
+    hold_60 = .6*current_max_assets
+    
+    
+    
+    # If sar1, sar2, and sar3 are bull: Go all in!
+    if (sar1 < signal) and (sar2 < signal) and (sar3 < signal):
+        if portfolio.usd > .1*signal:
+            buy(PAIR)
+
+    # If sar1 and sar2 are bull: Go 60% in        
+    elif (sar1 < signal) and (sar2 < signal):
+        if portfolio.btc < hold_60:
+            buy(PAIR, amount = (hold_60-float(portfolio.btc)))
+        
+    # If at least sar 1 is bull: Go 30% in
+    elif (sar1 < signal):
+        if portfolio.btc < hold_30:
+            buy(PAIR, amount = (hold_30-float(portfolio.btc)))
+    
+    # if sar1 and sar2 are bear but sar3 is still bull, 
+    # reduce holdings to 50%
+    elif portfolio.btc > hold_50:
+        if sar2 > signal:
+            if sar3 < signal: 
+                sell(PAIR, amount = float(portfolio.btc) - hold_50)
+    
+    # if sar1 is bear and sar2 is also bear, 
+    # reduce holdings to 30%
+    elif portfolio.btc > hold_30:
+        if sar2 > signal:
+            sell(PAIR, amount = float(portfolio.btc) - hold_30)
+
+    # if sar1, sar2, and sar3 are bear, divest
+    elif portfolio.btc > .1:
+        if sar2 > signal:
+            if sar3 > signal:
+                sell(PAIR)
+
+    '''
+    logic by RickyBobbyBTC
+    
+    
+    Leg In:
+    IF Buy SAR1 = Long
+    Then Long 30%
+    IF Buy SAR2 and SAR1 = Long
+    Then Long Additional 30%
+    IF BUY SAR3 AND SAR1 and SAR2 = Long
+    Then Long 40%....or 100% Long
+    
+    Leg out:
+    If SAR2 = Sell
+    Sell 50%
+    If SAR3 and SAR2= Sell
+    Sell 100%
+    '''
+
+
+
+
+
+    ''' Plot Parabolic SAR '''
+    plot('low', data[PAIR].low)
+    plot('high', data[PAIR].high) 
+    plot('sar1', sar1)
+    plot('sar2', sar2)
+    plot('sar3', sar3)
+    plot('signal', signal)
+    
+''' Log Total Backtest Time '''    
+def stop():
+
+    end_time = time.time()
+    run_time = float(end_time - storage.begin_time)
+    log('Total Run Time: %.2f' % run_time)
+    
+    '''
+    RISING SAR
+    
+    Prior SAR:  The SAR value for the previous period. 
+    Extreme Point:  The highest high of the current uptrend. 
+    Acceleration Factor:  Starting at .02, AF increases by .02 each 
+        time the extreme point makes a new high. AF can reach a maximum 
+        of .20, no matter how long the uptrend extends. 
+    
+    Current RISING SAR = Prior SAR + Prior AF(Prior EP - Prior SAR)
+    
+    The Acceleration Factor is multiplied by the difference between the 
+    Extreme Point and the prior period's SAR. This is then added to the 
+    prior period's SAR. Note however that Rising SAR can never be above the
+    prior two periods' lows. Should SAR be above one of those lows, use
+    the lowest of the two for SAR. 
+    
+    FALLING SAR
+    
+    Prior SAR:  The SAR value for the previous period. 
+    Extreme Point:  The lowest low of the current downtrend. 
+    Acceleration Factor (AF): Starting at .02, AF increases by .02 each 
+        time the extreme point makes a new low. AF can reach a maximum
+        of .20, no matter how long the downtrend extends. 
+    
+    Current FALLING SAR = Prior SAR - Prior AF(Prior SAR - Prior EP)
+    
+    The Acceleration Factor is multiplied by the difference between the 
+    Prior period's SAR and the Extreme Point. This is then subtracted 
+    from the prior period's SAR. Note however that Falling SAR can never be
+    below the prior two periods' highs. Should SAR be below one of
+    those highs, use the highest of the two for SAR. 
+    '''
