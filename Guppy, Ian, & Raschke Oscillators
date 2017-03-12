@@ -1,0 +1,125 @@
+import talib
+
+def tick():
+
+    C           = data.btc_usd.warmup_period('close')
+
+    # Ian Oscillator
+    
+    P1          = 4
+    P2          = 17
+    P3          = 21
+    
+    IO          = talib.MA(C, P1) - talib.MA(C, P2)
+    IOs         = talib.EMA(IO, P3)[-1]
+    IO          = IO[-1]
+
+    # plots 1/2 scale
+    plot('IO', 0.5*IO, secondary= True)
+    plot('IOs', 0.5*IOs, secondary=True)
+    
+    # Guppy Oscillator
+    
+    T = 21
+    
+    S1          = 3
+    S2          = 5
+    S3          = 8
+    S4          = 10
+    S5          = 12
+    S6          = 15
+    L1          = 30
+    L2          = 35
+    L3          = 40
+    L4          = 45
+    L5          = 50
+    L6          = 60
+    
+    Short = (talib.EMA(C,S1)+talib.EMA(C,S2)+talib.EMA(C,S3)
+        +talib.EMA(C,S4)+talib.EMA(C,S5)+talib.EMA(C,S6))
+    Long = (talib.EMA(C,L1)+talib.EMA(C,L2)+talib.EMA(C,L3)
+        +talib.EMA(C,L4)+talib.EMA(C,L5)+talib.EMA(C,L6))
+    GO = ((Short - Long)/Long)*100
+    GOs = talib.EMA(GO, T)[-1]
+    GO = GO[-1]
+
+    # plots 2X scale
+    plot('GO', 2*GO, secondary=True)
+    plot('GOs', 2*GOs, secondary=True)
+
+    # Raschke Oscillator
+
+    R1          = 3
+    R2          = 10
+    R3          = 16
+
+    RO          = talib.EMA(C, R1) - talib.EMA(C, R2)
+    ROs         = talib.MA(RO, R3)[-1]
+    RO          = RO[-1]
+    
+    plot('RO', RO, secondary=True)
+    plot('ROs', ROs, secondary=True)
+    
+    ''' REMOVE COMMENT FOR:
+    # Guppy Multiple Moving Average
+    GS1 = talib.EMA(C,S1)[-1]
+    GS2 = talib.EMA(C,S2)[-1]
+    GS3 = talib.EMA(C,S3)[-1]
+    GS4 = talib.EMA(C,S4)[-1]
+    GS5 = talib.EMA(C,S5)[-1]
+    GS6 = talib.EMA(C,S6)[-1]
+    GL1 = talib.EMA(C,L1)[-1]
+    GL2 = talib.EMA(C,L2)[-1]
+    GL3 = talib.EMA(C,L3)[-1]
+    GL4 = talib.EMA(C,L4)[-1]
+    GL5 = talib.EMA(C,L5)[-1]
+    GL6 = talib.EMA(C,L6)[-1]      
+    
+    plot('GS1', GS1)
+    plot('GS2', GS2)
+    plot('GS3', GS3)
+    plot('GS4', GS4)
+    plot('GS5', GS5)
+    plot('GS6', GS6)
+    plot('GL1', GL1)
+    plot('GL2', GL2)
+    plot('GL3', GL3)
+    plot('GL4', GL4)
+    plot('GL5', GL5)
+    plot('GL6', GL6)    
+    '''
+    
+    BUY = 0
+    SELL = 0
+    if IO > IOs:
+        BUY += 1
+    if GO > GOs:
+        BUY += 1
+    if RO > ROs:
+        BUY += 1
+        
+    if IO < IOs:
+        SELL += 1
+    if GO < GOs:
+        SELL += 1
+    if RO < ROs:
+        SELL += 1   
+    
+    PRICE = Decimal(C[-1])
+    if portfolio.btc > 0.1:
+        ASSETS = True
+    else:
+        ASSETS = False
+
+    if portfolio.usd > Decimal(0.1)*PRICE:
+        CURRENCY = True
+    else:
+        CURRENCY = False
+        
+    if BUY == 3:     
+        if CURRENCY == True:
+            buy(pairs.btc_usd)
+    if SELL == 3:
+        if ASSETS == True:
+            sell(pairs.btc_usd)
+    
