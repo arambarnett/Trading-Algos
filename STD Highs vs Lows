@@ -1,0 +1,39 @@
+PAIR = info.primary_pair
+PERIOD = 60
+THRESHOLD = -0.01
+
+
+import talib
+
+def tick():
+
+    
+    highs = data[PAIR].period(PERIOD, 'high')
+    lows = data[PAIR].period(PERIOD, 'low')
+    std = float(data[PAIR].std(PERIOD))
+    std_highs = talib.STDDEV(highs, PERIOD)[-1]
+    std_lows = talib.STDDEV(lows, PERIOD)[-1]
+    
+    
+    # Relative Standard Deviation of Highs vs Lows
+    diff = (std_highs - std_lows)/std
+    
+
+    plot('diff', diff, secondary=True)
+    if info.tick == 0:
+        plot('z', -3, secondary=True)
+    plot('threshold', THRESHOLD, secondary=True)
+  
+    storage.trades = storage.get('trades', 0)
+
+    if diff > THRESHOLD:
+        if portfolio.usd > 100:    
+            buy(PAIR)
+            storage.trades +=1
+    else:        
+        if portfolio.btc > 1:
+            sell(PAIR)
+            storage.trades +=1
+            
+def stop():
+    log('trades: %s' % storage.trades)
