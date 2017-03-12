@@ -1,0 +1,209 @@
+'''TRADE SIMULATED HLOCV DATA for Overfit Testing'''
+
+# litepresence
+
+# v3.0
+
+''' http://en.wikipedia.org/wiki/Overfitting '''
+
+###################################################
+''' FEATURES '''
+###################################################
+# Modifies Historical Closing Price
+# Brownian Walk amplified by price
+# Logarithmic Growth or Decay
+# High, Low, Open, Close, and Volume Simulations
+# [-250:] numpy arrays for use with talib
+# No two backtests with same parameters will match
+# Sample 90/20 SMA Cross Trading Code
+###################################################
+
+
+'''
+Your donations are appreciated and support development
+BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME
+'''
+
+
+import numpy as np
+import math
+import talib
+import random
+
+PAIR = info.primary_pair
+
+SIG = 1.5 # Volatility (0 to 5)
+LOG = -0.05 # Growth/Decay (0.2 to -0.8)
+
+# Error: SyntaxError: JSON.parse: unexpected character
+# ...usually means too big LOG or SIG value
+
+'''Interesting Parameters'''
+# SIG 0     LOG 0      # "True Price" 
+# SIG 1     LOG 1      
+# SIG 0.7   LOG -0.1 
+# SIG 2     LOG -0.2
+# SIG 1     LOG -0.7   # "The Death of Bitcoin"
+'''********************'''
+
+
+def brown_noise(sig):
+
+    if sig > 0:
+        if storage.random_price > data[PAIR].price:
+            sig = sig*storage.random_price/float(data[PAIR].price)
+        storage.brown = storage.brown + np.random.normal(0, sig)
+        return storage.brown
+    else:
+        return 0    
+
+def prices():
+    
+    storage.prices = storage.get('prices', [])
+    storage.opens = storage.get('opens', [])
+    storage.lows = storage.get('lows',[])
+    storage.highs = storage.get('highs',[])
+    storage.volumes = storage.get('volumes', [])
+    storage.random_price = storage.get('random_price', data[PAIR].price)  
+    storage.brown = storage.get('brown', 0)   
+    storage.prev_brown = storage.get('prev_brown', storage.brown)  
+   
+    
+    price = float(data[PAIR].price)
+
+    if info.tick == 0: 
+        n = 1
+        while n < 250:
+            sig = SIG * float(data[PAIR][-n].price / 250)
+            brown = brown_noise(sig)    
+            if price + brown > 0:
+                storage.random_price = price + brown
+            else:
+                storage.random_price = storage.random_price*math.pow(
+                    (1 + float(0.08)/float(100)), 
+                    (info.tick*info.interval/86400))
+                storage.brown = storage.prev_brown
+            storage.random_price = storage.random_price*math.pow(
+            (1 + float(LOG)/float(100)), (info.tick*info.interval/86400))
+            storage.prices.append(storage.random_price)
+            
+            high_ratio = (float(data[PAIR][-n].high /
+                        data[PAIR][-n].price))
+            low_ratio = (float(data[PAIR][-n].low / 
+                        data[PAIR][-n].price))
+            open_ratio = (float(data[PAIR][-n].open / 
+                        data[PAIR][-n].price))
+            storage.highs.append(storage.random_price*high_ratio)
+            storage.lows.append(storage.random_price*low_ratio)
+            storage.opens.append(storage.random_price*open_ratio)
+            storage.volumes.append(data[PAIR][-(250-n)].volume)
+            n+=1            
+
+    else:
+        
+        sim_close =  np.array(storage.prices)
+        sig = SIG * (sim_close[-1] / 250)
+        brown = brown_noise(sig) 
+        if float(data[PAIR].price) + brown > 0:
+            storage.random_price = price + brown
+        else:
+            storage.random_price = storage.random_price*math.pow(
+                (1 + float(0.08)/float(100)), 
+                (info.tick*info.interval/86400))
+            storage.brown = storage.prev_brown
+        storage.random_price = storage.random_price*math.pow(
+                    (1 + float(LOG)/float(100)), 
+                    (info.tick*info.interval/86400))
+        storage.prices.append(storage.random_price)  
+        storage.prices = storage.prices[-250:]
+        
+        z = random.randint(1,3)
+        rand = 0.8 + 0.4 * random.random()
+        high_ratio = float(data[PAIR][-z].high) / float(data[PAIR][-z].price)
+        low_ratio = float(data[PAIR][-z].low) / float(data[PAIR][-z].price)
+        open_ratio = float(data[PAIR][-z].open) / float(data[PAIR][-z].price)
+        storage.highs.append(storage.random_price*high_ratio)
+        storage.lows.append(storage.random_price*low_ratio)
+        storage.opens.append(storage.random_price*open_ratio)  
+        storage.volumes.append(rand*float(data[PAIR][-z].volume))
+        storage.highs = storage.highs[-250:]
+        storage.lows = storage.lows[-250:]
+        storage.opens = storage.opens[-250:]
+        storage.volumes = storage.volumes[-250:]
+
+    z = 100
+    if LOG > 0:
+        z = 1
+    storage.log = storage.get('log', z)         
+    ratio_100 = (100*info.interval)/86400
+    storage.log = storage.log*(1 + LOG/ratio_100)
+    storage.noise = brown
+
+    return 
+
+
+def tick():
+
+    prices()
+    
+    # Numpy Arrays of simulated HLOCV Data:
+    sim_close   = np.array(storage.prices)
+    sim_open    = np.array(storage.opens)  
+    sim_high    = np.array(storage.highs)
+    sim_low     = np.array(storage.lows)
+    sim_volume  = np.array(storage.volumes)
+
+    plot('sim_close', sim_close[-1])
+    
+    if 0: # on/off plot noise and growth/decay 
+        plot('noise', storage.noise, secondary=True)
+        plot('log', storage.log, secondary=True)
+    
+    if 1: # on/off plot simulated open, high, low, and volume
+        plot('sim_open', sim_open[-1])
+        plot('sim_high', sim_high[-1])
+        plot('sim_low', sim_low[-1])
+
+    if 0: # on/off plot real open, high, low, and volume
+        plot('open', data[PAIR].open)
+        plot('low', data[PAIR].low)
+        plot('high', data[PAIR].high)
+        
+    if 0: #on/off plot real and simulated volume
+        plot('sim_volume', sim_volume[-1], secondary=True)    
+        plot('volume', data[PAIR].volume, secondary=True)
+        
+    #############################################################    
+    #############################################################
+    #############################################################
+    '''       SAMPLE TRADE LOGIC:  12h 90/20 SMA Cross        '''
+    #############################################################
+
+    ##  Use sim_close for numpy price array feeds to talib
+    ##  Use sim_close[-1] for limit orders at simulated price
+    ##  Also available np.array's length [-250:] for:
+    ##  sim_high, sim_low, sim_open, and sim_volume
+    
+    ''' click on chart labels to hide real "Close price", etc '''
+    #############################################################    
+
+    
+    ma_short = talib.MA(sim_close, timeperiod=20, matype=0)[-1]
+    ma_long = talib.MA(sim_close, timeperiod=90, matype=0)[-1]    
+
+    if ma_short > ma_long:
+        if portfolio.usd > 100:
+            buy(info.primary_pair, price = sim_close[-1])
+            
+    if ma_short < ma_long:
+        if portfolio.btc > 1:
+            sell(info.primary_pair, price = sim_close[-1])
+
+    plot('short', ma_short)
+    plot('long', ma_long)    
+    
+    
+    #############################################################
+    #############################################################    
+    #############################################################
+
