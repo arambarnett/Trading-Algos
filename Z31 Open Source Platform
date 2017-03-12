@@ -1,0 +1,1645 @@
+import talib
+import time
+import math
+import numpy as np
+import random
+from collections import Counter
+
+# anti_drift() settings
+INTERVAL = 3600 # Your preferred live tick size
+
+CHANNEL_HASH = 'your_channel_hash_goes_here'
+# https://tradewave.net/marketplace/litepresence
+CHANNEL_A_LIVE = 'Z31_CHANNEL_A_LIVE_' + CHANNEL_HASH #Master A
+CHANNEL_B_LIVE = 'Z31_CHANNEL_B_LIVE_' + CHANNEL_HASH #Master B
+CHANNEL_A_TEST = 'Z31_CHANNEL_A_TEST_' + CHANNEL_HASH #Backtesting A
+CHANNEL_B_TEST = 'Z31_CHANNEL_B_TEST_' + CHANNEL_HASH #Backtesting B
+SHEET_KEY = 'your_google_sheet_key_goes_here'
+
+# VERSION
+VERSION         = 'Honey Badger Pro Z31'
+FEATURES        = 'Three Exchange Composite Data & Dual Exchange Master'
+EQUITY          = 50000  #Equity limit in USD for marketplace clients
+MASTER          = True      # Set False for marketplace / slave versions
+SET_KEYS        = True    # True to Install Keys, then restart set to False
+CHANNEL         = 'A'       # set master to channel A or B
+
+# INITIALIZATION KEYS (cut and paste from end of log... remove timestamps)
+GREEN_DRAGON = 0
+RED_DRAGON = 0
+LAST_DRAGON = 0
+MODE = 0
+SUBCLASS = 0
+NEW_SUBCLASS = 0
+PANIC_SELL = 0
+PANIC_BUY = 0
+#########################################################################
+
+# ICEBERG CONTROLS 
+ICE_TEST        = False     # On/Off while backtesting (logs too frequently)
+AMOUNT          = 1.5       # Iceberg size (BTC)
+MIN             = 1.5       # MIN*AMOUNT "ALL IN"
+DELAY           = 60        # Iceberg repeat (seconds)
+
+# CONSTANTS
+BACKTEST = hasattr(info, "end")
+LIVE = not BACKTEST
+SLAVE = not MASTER
+DAYS = 86400
+HOURS = 3600
+PAIR = info.primary_pair
+
+# COMPOSITE INDEX PRICES
+COMPOSITE = ['bitfinex', 'bitstamp', 'btce']
+
+#    COMPOSITE = ['btce', 'coinbase', 'bitfinex', 'bitstamp', 'okcoin']
+#    random.shuffle(COMPOSITE)
+#    COMPOSITE = COMPOSITE[-3:]
+
+
+COMPOSITE_TEST = True
+
+
+if (info.interval>3600) or (not COMPOSITE_TEST) or (info.begin<1441065631):
+    COMPOSITE = [info.primary_exchange]
+
+# this is how you run your magic money machine:
+def service_manual():
+    '''
+    TO INITIALIZE MASTER=True:
+
+    Set up API keys at exchange with 0.25 BTC balance.
+    Set all 'Installation Keys' (in constants above GREEN_DRAGON, etc.) to: 0
+    Run 1h backtest of past 200 days; w/ "SET_KEYS = True"
+    Fetch KEYS from end of log report
+    Install "Initialization Keys" above in order reported.
+    Click 'Save'
+    Start live trader with SET_KEYS = True
+
+    THEN IMMEDIATELY RESTART to disable SET_KEYS:
+    Stop live trader after 1st tick
+    SET_KEYS = False; THEN "SAVE"
+    Start live trader
+    Now if it auto restarts it knows where it last was.
+
+    TO INITAILIZE CLIENT; MASTER = False:
+
+    Just click "trade live", make sure EQUITY is adequate.
+
+    TO MANUALLY OVERRIDE:
+
+    https://docs.google.com/spreadsheets/ (your sheet key)
+
+    SYNC   = 0 (Sheet should be set to ZERO to connect CLIENTS to MASTER)
+    BUY    = 1 (Force Hold BTC)
+    SELL   = -1 (Force Hold USD)
+    STOP   = 666 (Kill Switch - Stops all Clients)
+    RESET  = 777 (Reset Switch - Restarts all Clients)
+    '''
+
+# COMMUNICATE: MASTER/CLIENT + FOREX + GOOGLE
+def update_external_data():  # automatically called by engine before each tick
+
+    #if info.tick==0: log('update_external_data()')
+
+    if LIVE:
+        # Contact Google Sheets and Store contents to "sheet_key"
+        storage.sheet_key = storage.get('sheet_key', 0)
+        storage.override = storage.get('override', 0)
+        try:
+            storage.sheet = fetch_sheet(SHEET_KEY)
+        except:
+            log('google() api failed, autopilot this tick')
+        for column, vals in storage.sheet.items():
+            storage.sheet_key = vals
+            storage.sheet_key = [(x.split('u')[0]) for x in storage.sheet_key]
+
+        if int(storage.sheet_key[0]) != storage.override:
+            log('New Sheet Signal: %s' % int(storage.sheet_key[0]))
+
+        # Simplify all that nonsense into an integer; (-1,0,1,666, or 777)
+        storage.override = int(storage.sheet_key[0])
+    else:
+        storage.override = 0
+
+    # import FOREX rates from fixer.io to adjust equity limits
+    storage.usdEUR = storage.get('usdEUR', 0.91)
+    storage.usdCNY = storage.get('usdCNY', 6.49)
+    if LIVE:
+        try:
+            forex = get_json(
+                'http://api.fixer.io/latest?base=USD&symbols=EUR,CNY')
+            # rates are returned as dictionary    
+            storage.usdEUR = forex['rates']['EUR']  
+            storage.usdCNY = forex['rates']['CNY']
+        except:
+            log('forex() api failed, autopilot this tick')
+            pass
+
+def fetch_sheet(key):  # called from update_external_data()
+
+    #if info.tick==0: log('fetch_sheet()')
+
+    # Extract Data from Google Sheets cell for cell
+    obj = get_json(
+      'https://spreadsheets.google.com/feeds/list/%s/od6/public/values?alt=json'
+      % SHEET_KEY)
+    try:
+        entries = obj['feed']['entry']
+        result = {}
+        for entry in entries:
+            cols = [k.split('gsx$')[1] for k in entry.keys() if 'gsx$' in k]
+            for col in cols:
+                value = entry['gsx$%s' % col].values()[0]
+                if col in result:
+                    result[col].append(value)
+                else:
+                    result[col] = [value]
+    except:
+        result = {}
+    return result
+
+def google_override():  # called from tick() if LIVE SLAVE
+
+    #if info.tick==0: log('google_override()')
+
+    # Reset override on first tick and whenever Google signal changes
+    if storage.algo_tick == 0:
+        storage.override_counter = 0
+    if storage.override != storage.override_prev:
+        storage.override_counter = 0
+
+    # Announce Return to default
+    if storage.override == 0:
+        if storage.override_prev == 777:
+            log('LIVE UPDATE Complete, New Version %s Installed' % VERSION)
+
+    # Default Condition; Align to Algo if zero or post restart
+    if ((storage.override == 0) or
+            ((storage.override == 777) and
+             (storage.override_counter > 0))):
+
+        # Contact Master Honeybadger and Align Holdings
+        sync()
+        # Reset counter whenever in default position
+        if storage.override == 0:
+            storage.override_counter = 0
+    else:
+
+        if storage.override_counter != 0:
+            log('MANUAL OVERRIDE: %s Tick: %s' %
+                (storage.override, storage.override_counter))
+
+        #
+        '''MANUAL OVERRIDE'''
+        #
+        if storage.algo_tick != 0:
+
+            # BUY
+            if storage.override == 1:
+                storage.action = 1
+                if storage.override_counter == 0:
+                    log('Installing Live Update - Moving to BTC Manually to align')
+
+            # SELL
+            if storage.override == -1:
+                storage.action = -1
+                if storage.override_counter == 0:
+                    log('Installing Live Update - Moving to USD Manually to align')
+
+            # KILL
+            if storage.override == 666:
+                log('I forsee a critical error. *** POWER OFF *** ')
+                raise Stop()
+
+            # RESTART
+            if storage.algo_tick != 0:
+                if storage.override == 777:
+                    # JUST ONE RESTART
+                    if storage.override_counter == 0:
+                        log('%s Update, Installing Improved Algo! *Stop* / *Auto Start*' %
+                            VERSION)
+                        raise Exception('%s LIVE UPDATE' % VERSION)
+
+        # Any time override not zero, add one to counter
+        storage.override_counter += 1
+
+    storage.override_prev = storage.override
+
+def sync():  # called by google_override() if LIVE SLAVE:
+
+    #if info.tick==0: log('sync()')
+
+    try:
+        # Set Channel to MASTER Channel
+        channel = storage(channel=CHANNEL_B_LIVE)
+        contact_b = (info.current_time - channel.time_check) / 60
+        channel = storage(channel=CHANNEL_A_LIVE)
+        contact = (info.current_time - channel.time_check) / 60
+        
+        if (contact > contact_b) and (contact > 90):
+            log('ALERT Channel A signal at %s failed, switching channels...'
+                % channel.exchange)
+            channel = storage(channel=CHANNEL_B_LIVE)
+            log('ALERT Channel B signal at %s connected, beware additional latency issues.'
+                % channel.exchange)
+
+        storage.tune = 0
+        if storage.algo_tick == 0:
+            log('Contacting the Master Honey Badger...')
+
+        # If the MASTER exchange changes announce to clients
+        storage.exchange = storage.get('exchange', '')
+        if storage.exchange != channel.exchange:
+            if storage.algo_tick:
+                log('The Master Honeybadger signal is now originating from %s exchange; your badger will follow.' %
+                    channel.exchange)
+                log('The signal is comprised of composite data from %s' % COMPOSITE)
+                log('You are connected to %s exchange.' % info.primary_exchange)
+
+        if storage.subclass != channel.subclass:
+            report_subclass(channel.mode, channel.subclass)
+        
+        if storage.msg != channel.msg:
+            if channel.msg != '':
+                log(channel.msg)
+
+        # Align Client to Master
+        storage.red_dragon = channel.red_dragon
+        storage.green_dragon = channel.green_dragon
+        storage.last_dragon = channel.last_dragon
+        storage.mode = channel.mode
+        storage.subclass = channel.subclass
+        storage.new_subclass = channel.new_subclass
+        storage.panic_buy = channel.panic_buy
+        storage.panic_sell = channel.panic_sell        
+        storage.exchange = channel.exchange
+        storage.msg = channel.msg
+        
+        # Fetch indicators from Master
+        storage.ma2=channel.ma2
+        storage.ma3=channel.ma3
+        storage.ma30=channel.ma30
+        storage.ma55=channel.ma55
+        storage.ma60=channel.ma60
+        storage.ma90=channel.ma90
+        storage.ma150=channel.ma150
+        storage.ma2i=channel.ma2i
+        storage.ma3i=channel.ma3i
+        storage.ma30i=channel.ma30i
+        storage.ma55i=channel.ma55i
+        storage.ma60i=channel.ma60i
+        storage.ma90i=channel.ma90i
+        storage.ma150i=channel.ma150i
+        storage.cluster=channel.cluster
+        storage.resistance2=channel.resistance2
+        storage.resistance=channel.resistance
+        storage.ma2s=channel.ma2s
+        storage.ma3s=channel.ma3s
+        storage.ma30s=channel.ma30s
+        storage.ma55s=channel.ma55s
+        storage.ma60s=channel.ma60s
+        storage.ma90s=channel.ma90s
+        storage.ma150s=channel.ma150s
+        storage.top=channel.top
+        storage.bottom=channel.bottom
+        storage.high=channel.high
+        storage.low=channel.low
+        storage.close=channel.close
+        storage.Open=channel.Open
+        
+        storage.ratio12h = float(43200 / info.interval)
+        if storage.algo_tick == 0:
+            storage.start = info.current_time
+            storage.start_assets = storage.assets + storage.currency / storage.ma2
+            storage.start_currency = storage.currency + \
+                storage.assets * storage.ma2         
+
+        # Client buy/sell action is reset; then set to match master
+        storage.action = 0
+        storage.honey_badger = 0
+
+        if channel.holding_currency != channel.holding_assets:
+            if channel.holding_currency:
+                # PASS CONTINUOUS SIGNAL (-1 = USD)
+                if EQUITY > 50000:  # VIP
+                    storage.honey_badger = -1
+                # PASS DISCRETE SIGNAL only when mal aligned
+                if storage.holding_assets:
+                    storage.action = -1
+                    if storage.algo_tick == 0:
+                        log('Honey Badger is HOLDING USD. You are not aligned. ' +
+                            'Please SELL manually at your exchange, else ' +
+                            'Honey Badger will iceberg for you in 60 SECONDS. ' +
+                            'You do not need to restart. ')
+
+            if channel.holding_assets:
+                # PASS CONTINUOUS SIGNAL (1 = BTC)
+                if EQUITY > 50000:  # VIP
+                    storage.honey_badger = 1
+                # PASS DISCRETE SIGNAL only when mal aligned
+                if storage.holding_currency:
+                    storage.action = 1
+                    if storage.algo_tick == 0:
+                        log('Honey Badger is HOLDING BTC. You are not aligned. ' +
+                            'Please BUY manually at your exchange, else ' +
+                            'Honey Badger will iceberg for you in 60 SECONDS. ' +
+                            'You do not need to restart. ')
+
+        # On the first tick advise of channel broadcast
+        if storage.algo_tick == 0:
+            log('Signal generated at %s exchange' % channel.exchange)
+            log('The signal is comprised of composite data from %s' % COMPOSITE)
+
+    except TradewaveChannelError, e:
+
+        # Do this when no channel exists
+        if storage.algo_tick == 0:
+            log('CHANNEL ACCESS FAILED: %s' % e)
+            log('Try Again')
+            raise Stop()
+        if storage.algo_tick > 0:
+            log('ALERT - LOST CONTACT TO CHANNEL %s Hours: %s' %
+                (storage.tune, e))
+            storage.tune += info.interval
+            if storage.tune > 86400:
+                log('LOST CONTACT 24hrs - STOPPING, contact LP')
+                raise Stop()
+
+    # Slave Checks Latency vs Master Script; logs every tick
+    # If 4 hours no contact, send email alert
+    latency_issues = 240
+
+    contact = (info.current_time - channel.time_check) / 60
+    log('Latency.....: %s minutes' % contact)
+    storage.latency_alert = storage.get('latency_alert', True)
+    if contact > latency_issues:
+        if storage.latency_alert:
+            email('your signal appears to be down, please forward to LP asap',
+                  subject='HONEYBADGER LATENCY ISSUES')
+            storage.latency_alert = False
+    else:
+        storage.latency_alert = True
+
+# POPULATE DATA OBJECTS
+def initialize():  # automatically called by engine on first tick
+    
+    #if info.tick==0: log('initialize()')
+
+    log(VERSION)
+    log(FEATURES)
+    
+    # Reset storage when necessary and announce
+    if SLAVE:
+        if LIVE:
+            storage.reset()
+            log('Client Live ***storage.reset()*** ' +
+                'Fetching State KEYS from Master...')
+        if BACKTEST:
+            storage.reset()
+            log('Client Backtest ***storage.reset()*** ' +
+                'initializing BLIND without state KEYS ' +
+                'The first 2-3 trades may be innaccurate')
+
+    if MASTER:
+        if SET_KEYS:
+            if LIVE:
+                storage.reset()
+                log('Master Live ***storage.reset()***')
+            if BACKTEST:
+                storage.reset()
+                log('Master Backtest ***storage.reset()***')
+        else:
+            if LIVE:
+                log('Master Live - Storage Preserved from Previous Session')
+            if BACKTEST:
+                storage.reset()
+                log('Master Backtest - ***storage.reset()***')
+
+    now = info.current_time
+    # Logic Objects
+    storage.green_dragon = storage.get('green_dragon',  (now + 1 * DAYS))
+    storage.red_dragon = storage.get('red_dragon',      0)
+    storage.last_dragon = storage.get('last_dragon',    0)
+    storage.mode = storage.get('mode',                  0)
+    storage.subclass = storage.get('subclass',          0)
+    storage.new_subclass = storage.get('new_subclass',  0)
+    storage.panic_sell = storage.get('panic_sell',      now)
+    storage.panic_buy = storage.get('panic_buy',        now)
+    storage.panic_blood = storage.get('panic_blood',    0)
+
+    # Communication Objects
+   
+    storage.trade_type = storage.get('trade_type',      [])
+    storage.trades = storage.get('trades',              0)
+    storage.equity = storage.get('equity',              0)
+    storage.honeybadger = storage.get('honeybadger',    0)
+    storage.tune = storage.get('tune',                  0)
+    storage.action = storage.get('action',              0)
+    storage.time_check = storage.get('time_check',      0)
+    storage.key = storage.get('key',                    [])
+    storage.msg = storage.get('msg',                    '')
+    storage.exchange = storage.get('exchange',          info.primary_exchange)
+    storage.override = storage.get('override',          0)
+    storage.override_prev = storage.get('override_prev', 0)
+    storage.override_counter = storage.get('override_counter', 0)
+    storage.sheet = {}
+    
+    # initialize anti_drift
+    storage.algo_tick = -1
+
+    # If master set channel
+    if MASTER:
+        if LIVE:
+            if CHANNEL == 'A':
+                storage.channel = CHANNEL_A_LIVE
+                log('Master Channel A')
+            if CHANNEL == 'B':
+                storage.channel = CHANNEL_B_LIVE
+                log('Master Channel B')
+        if BACKTEST:
+            if CHANNEL == 'A':
+                storage.channel = CHANNEL_A_TEST
+                log('Master Channel A')
+            if CHANNEL == 'B':
+                storage.channel = CHANNEL_B_TEST
+                log('Master Channel B')
+        storage.set_channel(storage.channel)
+
+def holdings():  # called from tick() AND market_ice()
+
+    #if info.tick==0: log('holdings() v1.0')
+
+    # Fetch portfolio balance and volume weighted price
+    storage.currency = 0.001 + \
+        float(portfolio[currencies[storage.currency_code]])
+    storage.assets = 0.001 + float(portfolio[currencies[storage.asset_code]])
+    price = storage.mean_price = float(data[PAIR].vwap(2))
+    # Current Maximum assets and currency
+    storage.potential_currency = storage.currency + \
+        (storage.assets * storage.mean_price)
+    storage.potential_assets = storage.assets + \
+        (storage.currency / storage.mean_price)
+    # Initial Maximum assets and currency
+    if storage.algo_tick == 0:
+        storage.start_currency = storage.potential_currency
+        storage.start_assets = storage.potential_assets
+
+    # Return On Investment and Percent Invested
+    storage.percent_invested = 100 * storage.assets / storage.potential_assets
+    storage.ROI_currency = (
+        100 * storage.potential_currency / storage.start_currency) - 100
+    storage.ROI_assets = (
+        100 * storage.potential_assets / storage.start_assets) - 100
+
+    # Trading Frequency
+    storage.trading_days = float(
+        info.interval) * float(storage.algo_tick) / float(86400)
+    storage.trading_frequency = storage.trading_days / \
+        (storage.trades + float(0.00000001))
+    if storage.trading_frequency > 10000:
+        storage.trading_frequency = 0
+
+    # Boolean Wallet States
+    storage.holding_assets = storage.holding_currency = False
+    if storage.currency >= 0.02 * storage.mean_price:
+        storage.holding_currency = True
+    if storage.assets >= 0.01:
+        storage.holding_assets = True
+    # Create Log Signal for plotting
+    if storage.holding_assets:
+        storage.log_signal = math.log(price, 10) + 0.5
+    else:
+        storage.log_signal = math.log(price, 10) - 0.5
+
+    # Adjust Equity for CNY and EUR
+    if info.primary_pair == pairs.btc_cny:
+        storage.equity_limit = EQUITY * storage.usdCNY
+    if info.primary_pair == pairs.btc_eur:
+        storage.equity_limit = EQUITY * storage.usdEUR
+
+    # Check if Over Equity Limit
+    storage.equity_limit = EQUITY
+    # use forex rates for Euro and Yaun
+    if info.primary_pair == pairs.btc_eur:
+        storage.equity_limit = EQUITY * storage.usdEUR
+    if info.primary_pair == pairs.btc_cny:
+        storage.equity_limit = EQUITY * storage.usdCNY
+    # zero is default state, else over limit
+    if storage.potential_currency > storage.equity_limit:
+        storage.equity += 1  # SELL ONE LAST TIME WHEN 1
+    else:
+        storage.equity = 0
+        
+    
+        
+def begin():  # called from tick()
+
+    #if info.tick==0: log('begin() v1.0')
+
+    if LIVE:
+        # force BTC pair live
+        if storage.asset_CODE != 'BTC':
+            log('LIVE trading pair must be BTCUSD, BTCEUR, or BTCCNY')
+            raise Stop()
+        # force 1m tick live
+        if info.interval != 60:
+            log('LIVE interval must be 1m')
+            raise Stop()
+
+    # KEY INSTALLATION
+    if MASTER and LIVE:
+
+        storage.start = info.current_time
+        if SET_KEYS:
+            log('HARD RESTART: New State KEYS Installed:')
+            storage.green_dragon = GREEN_DRAGON
+            storage.red_dragon = RED_DRAGON
+            storage.last_dragon = LAST_DRAGON
+            storage.mode = MODE
+            storage.subclass = SUBCLASS
+            storage.new_subclass = NEW_SUBCLASS
+            storage.panic_sell = PANIC_SELL
+            storage.panic_buy = PANIC_BUY
+            initialization_keys()
+        else:
+            log('SOFT RESTART: Previous State KEYS Installed:')
+            initialization_keys()
+
+    if SLAVE:
+        if EQUITY == 0:
+            if LIVE:
+                log('I wonder what Honey Badger would do...')
+                log('https://tradewave.net/marketplace/litepresence')
+                log('Honey Badger LIVE disabled in trial version.')                
+                raise Stop()
+            if BACKTEST:
+                if (time.time() - info.end) < 172000:
+                    log('I wonder what Honey Badger would do...')
+                    log('https://tradewave.net/marketplace/litepresence')
+                    log('Latest 48 hours disabled in trial version.')                    
+                    raise Stop()             
+        
+        if BACKTEST:  # force Backtest tick size
+            if info.interval < 3600:
+                log('Please Choose Tick Interval 1h or Greater')
+                raise Stop()
+        # ANNOUNCE LIABILITY, EQUITY, SPOT FOREX
+        storage.tune = 0
+        liability_waiver()
+        log('Equity Limit: %s %s at %s exchange' %
+            (int(storage.equity_limit), storage.currency_CODE, info.primary_exchange))
+        if info.primary_pair == pairs.btc_eur:
+            log('Spot Forex: %.5f USDEUR' % storage.usdEUR)
+        if info.primary_pair == pairs.btc_cny:
+            log('Spot Forex: %.5f USDCNY' % storage.usdCNY)
+
+def instrument():  # called from tick()
+
+    #if info.tick==0: log('instrument() v1.0')
+
+    pair = info.primary_pair
+    if pair == pairs.btc_usd:
+        pair = 'btcusd'
+    if pair == pairs.ltc_usd:
+        pair = 'ltcusd'
+    if pair == pairs.ltc_btc:
+        pair = 'ltcbtc'
+    if pair == pairs.btc_eur:
+        pair = 'btceur'
+    if pair == pairs.ltc_eur:
+        pair = 'ltceur'
+    if pair == pairs.btc_cny:
+        pair = 'btccny'
+    if pair == pairs.ltc_cny:
+        pair = 'ltccny'
+    storage.currency_code = ''.join(list((pair)[3:6]))
+    storage.asset_code = ''.join(list((pair)[0:3]))
+    storage.currency_CODE = (storage.currency_code).upper()
+    storage.asset_CODE = (storage.asset_code).upper()
+    return
+
+def Z_splines(): # called from ma12h()
+
+    #if info.tick==0: log('Z_splines() v1.0')
+    
+    # "The Old Gox Data"
+    Z = 0.450  # Dawn of Bitcoin; Nov 2010 Bubble to $0.50
+    if info.current_time > 1291939200:  # Dec 10 2011
+        Z = 0.450  # Feb 2011 Bubble to $1.10
+    if info.current_time > 1302134400:  # April 7 2011
+        Z = 0.450  # June 2011 Bubble to 31.91
+    # Beginning of BTCe Dataset
+    if info.current_time > 1324100000:  # Dec 17 2011
+        Z = 1.000  # Early 2012 accumulation & consolidation; 3 to $7.22; consolidate to $5
+    if info.current_time > 1336608000:  # May 10 2012
+        Z = 1.000  # July 2012 Bubble to $15.40; consolidate to $10.50
+    if info.current_time > 1352937600:  # Nov 15 2012
+        Z = 1.000  # April 2013 "Mt Gox Bubble" to $266
+    if info.current_time > 1372636800:  # July 1 2013 - Begin "China Bubble"
+        Z = 1.000  # Nov 2013 "China Bubble" to $1242
+    if info.current_time > 1417392000:  # Dec 1 2014 - Birth of the Honey Badger
+        Z = 0.905  # 2015 accumulation & consolidation ;150 to 350; consolidate to $230
+    if info.current_time > 1443139200:  # Sept 25 2015 - Honey Badger Meets the Green Dragon
+        Z = 0.820  # 2016 "Forex bubble"
+        if info.primary_exchange == 'bitfinex': 
+            Z = 0.82
+    #Z = 1.0
+    
+    asset = storage.asset_CODE
+    currency = storage.currency_CODE
+    if (asset == 'LTC') and (currency in ['USD', 'CNY', 'EUR']):
+        Z = 1.2
+    if (asset == 'LTC') and (currency == 'BTC'):
+        Z = 1.029
+
+    storage.Z = Z
+
+
+def float_sma(period, depth):  # called from indicators()
+
+    #if info.tick==0: log('float_sma() v1.0')
+
+    Z_splines()
+    minutes = period * storage.Z
+    
+    import math
+
+    if minutes < 2:
+        log('minimum period 2 minutes returns 1m data[PAIR].sma(2)')
+        minutes = 2
+        # raise Stop()
+    if minutes > 180000:
+        log('maximum period 12h 250 = 180,000 minutes')
+        minutes = 180000
+        # raise Stop()
+    too_small = 0
+    if minutes < 2 * info.interval / 60:
+        too_small = minutes
+        # log('returned sma2; select smaller tick size for %s minutes FMSMA
+        # interval' % minutes)
+        minutes = 2 * info.interval / 60
+        # raise Stop()
+
+    if 120 <= minutes < 240:
+        data_interval = 3600
+        period = minutes / 60
+        depth = 12 * depth
+    if 240 <= minutes < 480:
+        data_interval = 7200
+        period = minutes / 120
+        depth = 6 * depth
+    if 480 <= minutes < 1440:
+        data_interval = 14400
+        period = minutes / 240
+        depth = 3 * depth
+    if minutes >= 1440:
+        data_interval = 43200
+        period = minutes / 720
+
+    period_floor = int(math.floor(period))
+    period_ceiling = int(math.ceil(period))
+
+    if too_small: # less than sma(2)
+
+        sma = composite_sma(data_interval, period_floor, depth)
+        close = []
+        for e in COMPOSITE:
+            close.append(float(data(exchange=e)(interval=data_interval)
+                [PAIR][depth].close))
+        close = sum(close) / len(close)
+        ratio = too_small / minutes
+        inverse = 1 - ratio
+        return (ratio * sma + inverse * close)
+
+    if period_floor == period_ceiling:
+        sma = composite_sma(data_interval, period_floor, depth)
+        return sma
+
+    else:
+        sma_floor = composite_sma(data_interval, period_floor, depth)
+        sma_ceiling = composite_sma(data_interval, period_ceiling, depth)
+        ratio = float(period - period_floor)
+        inverse = 1 - ratio
+        return (ratio * sma_ceiling + inverse * sma_floor)
+
+
+def composite_sma(interval, period, depth):
+    
+    #if info.tick==0: log('composite_sma(%s, %s, %s) v2.0' % (interval, period, depth))
+
+    #log('test1')
+    iterations = len(COMPOSITE)    
+    smas = []
+    #log('test2')
+    try:
+        for e in COMPOSITE:
+            smas.append(float(data(interval=interval)
+                (exchange=e)[PAIR][depth].ma(period)))
+    except:
+        log('You must select btcusd at exchanges %s' % COMPOSITE)
+        raise Stop()
+    mean_sma = (sum(smas)/len(smas))
+    if info.interval !=60:
+        return mean_sma
+    #log('test3')
+    stales = []
+    for e in COMPOSITE:
+        stales.append(float(len(set(list(np.round(
+        data(exchange=e)[PAIR].period(60,'close'),2)))))-1)
+    max_stales = max(stales)    
+    for i in range(iterations):
+        stales[i] = (stales[i]/max_stales)**0.1
+    sum_stales = sum(stales)
+    #log('test4')
+    delays = 'delays_'+str(abs(hash(interval*3+period*5+depth*7)))        
+    storage[delays]=storage.get(delays,list(np.zeros(iterations)))
+    #log('test5')
+    filtered_smas = []
+    for i in range(iterations):
+        if (stales[i]>0.25) and (storage[delays][i]==0):
+            filtered_smas.append(smas[i])
+    #log('test6')        
+    if mean_sma > max(filtered_smas):
+        mean_sma=max(filtered_smas)
+    elif mean_sma < min(filtered_smas):
+        mean_sma = min(filtered_smas)
+    #log('test7')
+    for i in range(iterations):
+        if stales[i]<=0.25:
+                storage[delays][i]+=2
+        else:
+            if storage[delays][i]>0:
+                storage[delays][i]-=1    
+    #log('test8')
+    return mean_sma
+    
+def composite_hloc():
+    
+    #if info.tick==0: log('composite_hloc() v1.0')
+
+    high = np.zeros(10)
+    low = np.zeros(10)
+    close = np.zeros(10)
+    Open = np.zeros(10)    
+    
+    z=0
+    for e in COMPOSITE:
+        if BACKTEST or float(len(set(list(np.round(
+            data(exchange=e)[PAIR].period(60,'close'),2))))) > 5:
+        
+                high += (data(exchange=e)(interval=43200)[PAIR].period(10, 'high'))
+                low += (data(exchange=e)(interval=43200)[PAIR].period(10, 'low'))
+                close += (data(exchange=e)(interval=43200)[PAIR].period(10, 'close'))        
+                Open += (data(exchange=e)(interval=43200)[PAIR].period(10, 'open'))
+                z+=1
+
+    high = high/z
+    low = low/z
+    close = close/z
+    Open = Open/z
+
+    storage.high = [float(x) for x in list(high)]
+    storage.low = [float(x) for x in list(low)]
+    storage.close = [float(x) for x in list(close)]
+    storage.Open = [float(x) for x in list(Open)]    
+
+def indicators():  # called from tick()
+
+    #if info.tick==0: log('indicators() v1.0')
+
+    storage.ratio12h = float(43200 / info.interval)
+    n = storage.ratio12h
+    
+    # Calculate current 12h indicators
+    ma2 = storage.ma2       = (float_sma(720*2, 0))
+    ma3 = storage.ma3       = (float_sma(720*3, 0))
+    ma30 = storage.ma30     = (float_sma(720*30, 0))
+    ma55 = storage.ma55     = (float_sma(720*54, 0))
+    ma60 = storage.ma60     = (float_sma(720*60, 0))
+    ma90 = storage.ma90     = (float_sma(720*91, 0))
+    ma150 = storage.ma150   = (float_sma(720*150, 0))
+    ma2i = storage.ma2i     = (float_sma(720*2, -1))
+    ma3i = storage.ma3i     = (float_sma(720*3, -1))
+    ma30i = storage.ma30i   = (float_sma(720*30, -1))
+    ma55i = storage.ma55i   = (float_sma(720*54, -1))
+    ma60i = storage.ma60i   = (float_sma(720*60, -1))
+    ma90i = storage.ma90i   = (float_sma(720*91, -1))
+    ma150i = storage.ma150i = (float_sma(720*150, -1))
+    
+    storage.cluster = (max(ma30, ma60, ma90, ma150) -
+               min(ma30, ma60, ma90, ma150)) / ma90    
+    
+    storage.resistance = (
+        storage.ma30 + 3.0 * (storage.ma30 - storage.ma60))
+    storage.resistance2 = (
+        storage.ma150 + 2.0 * (storage.ma30 - storage.ma150))
+    storage.resistance = (storage.resistance + storage.resistance2) / 2
+
+    if storage.algo_tick == 0:
+
+        storage.start = info.current_time
+        storage.start_assets = storage.assets + storage.currency / storage.ma2
+        storage.start_currency = storage.currency + \
+            storage.assets * storage.ma2
+
+    c = 100
+    z = ma150
+    storage.ma2s = c * (ma2 - ma2i) / z
+    storage.ma3s = c * (ma3 - ma3i) / z
+    storage.ma30s = c * (ma30 - ma30i) / z
+    storage.ma55s = c * (ma55 - ma55i) / z
+    storage.ma60s = c * (ma60 - ma60i) / z
+    storage.ma90s = c * (ma90 - ma90i) / z
+    storage.ma150s = c * (ma150 - ma150i) / z
+
+    storage.top = storage.ma55 * 1.045
+    storage.bottom = storage.ma55 * 0.745
+    
+    composite_hloc()
+
+    
+
+# HONEY BADGER LOGIC TREE
+def dragons():  # called from think()
+
+    #if info.tick==0: log('dragons() v1.0')
+
+    # LOCALIZE INDICATORS
+    now = info.current_time
+    n = storage.ratio12h
+    Z=storage.Z
+    ma2 = storage.ma2
+    ma2i = storage.ma2i
+    ma2s = storage.ma2s
+    ma3 = storage.ma3
+    ma3i = storage.ma3i
+    ma3s = storage.ma3s
+    ma30 = storage.ma30
+    ma30i = storage.ma30i
+    ma30s = storage.ma30s
+    ma55 = storage.ma55
+    ma55i = storage.ma55i
+    ma55s = storage.ma55s
+    ma60 = storage.ma60
+    ma60i = storage.ma60i
+    ma60s = storage.ma60s
+    ma90 = storage.ma90
+    ma90i = storage.ma90i
+    ma90s = storage.ma90s
+    ma150 = storage.ma150
+    ma150i = storage.ma150i
+    ma150s = storage.ma150s
+    resistance = storage.resistance
+
+    # GREEN DRAGON
+    #Generic OPEN SOURCE Logic
+    if (ma2>ma30>ma60>ma90>ma150):
+        if storage.green_dragon > now:
+            storage.green_dragon = now
+    else:
+        storage.green_dragon = now + 1 * DAYS  # 'The Future'
+    green_dragon = 0
+    if now >= storage.green_dragon + 0.5 * DAYS:
+        green_dragon = 1
+
+    # RED DRAGON
+    storage.red_dragon = 0
+    #Generic OPEN SOURCE Logic
+    if (ma2<ma30<ma60<ma90<ma150):
+        storage.red_dragon = 1
+    red_dragon = storage.red_dragon
+
+    # LAST DRAGON
+    if red_dragon == 1:
+        storage.last_dragon = -1
+    if green_dragon == 1:
+        storage.last_dragon = 1
+    last_dragon = storage.last_dragon
+    if (red_dragon == 1) or (green_dragon == 1):
+        last_dragon = 0
+
+    # MODE SELECT
+    mode = 0
+    if last_dragon == 1:
+        mode = 2
+    if (last_dragon == -1):
+        if (ma2 > ma90):
+            mode = 4
+    if green_dragon >= 1:
+        mode = 1
+    if red_dragon == 1:
+        mode = 3
+    
+
+    return mode
+
+def think():  # called from tick() if LIVE MASTER or any BACKTEST
+
+    #if info.tick==0: log('think() v1.0')
+
+    # LOCALIZE INDICATIONS
+    Z = storage.Z
+    n = storage.ratio12h    
+    now = disable = info.current_time    
+    mode = dragons()    
+    action = 'HOLD'
+    subclass = storage.subclass
+    panic_buy = storage.panic_buy
+    panic_sell = storage.panic_sell
+    holding_assets = storage.holding_assets
+    holding_currency = storage.holding_currency    
+    ma2 = storage.ma2
+    ma2i = storage.ma2i
+    ma2s = storage.ma2s  
+    ma3 = storage.ma3
+    ma3i = storage.ma3i    
+    ma3s = storage.ma3s    
+    ma30 = storage.ma30
+    ma30i = storage.ma30i
+    ma30s = storage.ma30s    
+    ma60 = storage.ma60
+    ma90 = storage.ma90
+    ma90i = storage.ma90i    
+    ma150 = storage.ma150
+    ma150i = storage.ma150i
+    close = storage.close[-1]
+    high = storage.high[-1]
+    low = storage.low[-1]
+    top = storage.top
+    bottom = storage.bottom
+    resistance = storage.resistance
+    cluster = storage.cluster
+      
+    # GENERIC OPEN SOURCE LOGIC BEGIN....................  
+      
+    '''##################################################'''
+    # MODE 1 - GREEN DRAGON ################################
+    '''##################################################'''
+    
+    # 1.0 BUY CRYPTO LONG DEFAULT (12)
+    if mode == 0:
+        if holding_currency:
+            panic_buy = now+48*HOURS*Z
+            subclass = 1.10
+            action = 'BUY'
+
+    if mode == 1:
+        if holding_currency:
+            panic_buy = now+48*HOURS*Z
+            subclass = 1.10
+            action = 'BUY'                      
+
+    '''##################################################'''
+    # MODE 2 - CAPITULATION ################################
+    '''##################################################'''
+    if mode == 2:
+        if holding_assets:
+            panic_sell = now+48*HOURS*Z
+            subclass = 2.00
+            action = 'SELL'
+
+    '''##################################################'''
+    # MODE 3 - RED DRAGON ##################################
+    '''##################################################'''
+    
+    if mode == 3:
+        if holding_currency:
+            panic_buy = now+48*HOURS*Z
+            subclass = 3.00
+            action = 'BUY'
+
+    '''##################################################'''
+    # MODE 4 - CAT BOUNCE ##################################
+    '''##################################################'''
+
+    # 4.0 BUY HONEY - NEW MODE CAT BOUNCE (4 of 116)    
+    if mode == 4:
+        if holding_assets:
+            panic_sell = now+48*HOURS*Z
+            subclass = 4.00
+            action = 'SELL'  
+            
+    # GENERIC OPEN SOURCE LOGIC END....................          
+
+    if panic_buy <= now: panic_buy = 0
+    if panic_sell <= now: panic_sell = 0
+    if action == 'BUY': storage.action = 1
+    elif action == 'SELL': storage.action = -1
+    elif action == 'HOLD': storage.action = 0    
+    storage.panic_sell = panic_sell
+    storage.panic_buy = panic_buy
+    
+    msg = ''   
+    if ((storage.action == 1) and (storage.panic_sell <= now) or
+        (storage.action == -1) and (storage.panic_buy <= now)):    
+            storage.subclass = subclass
+            report_subclass(mode,subclass)
+    elif (storage.action == 1) and (storage.panic_sell > now):
+        if subclass != storage.new_subclass:
+            if holding_assets:
+                msg += 'Moon Launch Confirmed! '
+            report_subclass(mode,subclass)
+            hold_date = time.strftime('%Y-%m-%d %H:%M:%S', 
+                time.localtime(panic_sell))
+            msg += ('Honey Badger is Crazy - Petty Decisions Denied Until at Least %s' % hold_date) 
+    elif (storage.action == -1) and (storage.panic_buy > now):  
+        if subclass != storage.new_subclass:
+            if holding_currency:
+                msg += 'I Take You All To Hell With Me! '
+            report_subclass(mode,subclass)       
+            hold_date = time.strftime('%Y-%m-%d %H:%M:%S', 
+                time.localtime(panic_buy))
+            msg += ('Honey Badger is Nasty - Petty Decisions Denied Until at Least %s' % hold_date)      
+    elif (subclass != storage.new_subclass) or (mode != storage.mode):
+        report_subclass(mode,subclass)
+        if holding_currency and (action <=0):
+            msg += ('Subclass Change Denied SELL Position Confirmed by New Criteria @ %s' % close)
+        elif holding_assets and (action >=0):
+            msg += ('Subclass Change Denied BUY Position Confirmed by New Criteria @ %s' % close)
+        else:
+            msg += 'Honey Badger Don`t Care - Decision Denied'
+    
+    storage.msg = msg
+    
+
+    storage.new_subclass = subclass
+    storage.mode = mode
+
+# PLACE ORDERS
+
+def trade():  # called from tick()
+
+    #if info.tick==0: log('trade() v1.0')
+
+    # RESET ACTION IF NOTHING TO MOVE
+    if storage.action == -1:
+        if not storage.holding_assets:
+            storage.action = 0
+    if storage.action == 1:
+        if not storage.holding_currency:
+            storage.action = 0
+
+    if storage.msg != '': log(storage.msg)
+    # RESET ACTION IF TRADE FREQENCY < 12 Hours
+    storage.trade_time = storage.get('trade_time', (info.begin - 43200))
+    if info.current_time < (storage.trade_time + 14400):
+        storage.action = 0
+
+    price = storage.mean_price
+    now = info.current_time
+
+    # BUY
+    if (SLAVE and LIVE) or (storage.panic_sell <= now):
+        if storage.action == 1:
+            if (storage.potential_currency < 1.1 * storage.equity_limit) or BACKTEST:
+                if LIVE: email('BUY OR CRY', subject='HONEY BADGER IS BUYING')
+                ice(storage.action)
+                storage.trade_time = now
+                storage.trade_type.append(storage.subclass)
+                storage.trades += 1
+            else:  # EQUITY LIMIT EXCEEDED
+                if storage.equity == 1:
+                    buy(storage.instrument, (storage.equity_limit / price))
+                    storage.trade_type.append(storage.subclass)
+                    storage.trades += 1
+                log('EQUITY LIMITED EXCEEDED BUY MANUALLY AT THIS PRICE POINT '+
+                    'REDUCE ACCOUNT EQUITY BEFORE THE NEXT TRADE')
+                log('Account Value: %.2f of %.2f EQUITY' %
+                    (storage.potential_currency, storage.equity_limit))
+                if LIVE: email('BUY MANUALLY AT THIS PRICE POINT',
+                    subject='HONEY BADGER EQUITY LIMIT EXCEEDED')
+            if LIVE: 
+                log('I appreciate your generosity, BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME')
+
+    # SELL
+    if (SLAVE and LIVE) or (storage.panic_buy <= now):
+        if storage.action == -1:
+            if ((storage.potential_currency < 1.1 * storage.equity_limit) or BACKTEST):
+                if LIVE: email('FIAT TIME', subject='HONEY BADGER IS SELLING')
+                ice(storage.action)
+                storage.trade_time = now
+                storage.trade_type.append(storage.subclass)
+                storage.trades += 1
+            else:  # EQUITY LIMIT EXCEEDED
+                if storage.equity == 1:
+                    sell(storage.instrument, (storage.equity_limit / price))
+                    storage.trade_type.append(storage.subclass)
+                    storage.trades += 1
+                log('EQUITY LIMITED EXCEEDED SELL MANUALLY AT THIS PRICE POINT '+
+                    'REDUCE ACCOUNT EQUITY BEFORE THE NEXT TRADE')
+                log('Account Value: %.2f of %.2f EQUITY' %
+                    (storage.potential_currency, storage.equity_limit))
+                if LIVE: email('SELL MANUALLY AT THIS PRICE POINT',
+                    subject='HONEY BADGER EQUITY LIMIT EXCEEDED')
+
+def ice(action):  # called from trade()
+
+    #if info.tick==0: log('ice() v1.0')
+
+    if LIVE and (storage.algo_tick == 0):
+        time.sleep(60)
+
+    log(info.current_time)
+    if (SLAVE and LIVE) or (MASTER and BACKTEST and ICE_TEST):
+
+        # BUY
+        if action == 1:
+            while storage.holding_currency:
+                size = AMOUNT + random.random()
+                if storage.currency / storage.mean_price > MIN * size:
+                    try:  # ICY BUY
+                        buy(PAIR, amount=size, timeout=180)
+                    except:
+                        pass
+                else:
+                    try:  # ALL IN
+                        buy(PAIR)
+                    except:
+                        pass
+                if LIVE:
+                    time.sleep(DELAY)
+                    portfolio.update()
+                holdings()
+
+        # SELL
+        if action == -1:
+            while storage.holding_assets:
+                size = AMOUNT + random.random()
+                if storage.assets > MIN * size:
+                    try:  # ICY SELL
+                        sell(PAIR, amount=size, timeout=180)
+                    except:
+                        pass
+                else:
+                    try:  # ALL OUT
+                        sell(PAIR)
+                    except:
+                        pass
+                if LIVE:
+                    time.sleep(DELAY)
+                    portfolio.update()
+                holdings()
+
+    # if (MASTER, BACKTEST and not ICE_TEST), MASTER/LIVE , or SLAVE/BACKTEST:
+    else:
+        try:
+            if action == 1:
+                order = buy(PAIR)
+                if MASTER and LIVE:
+                    storage.holding_assets = True
+                    storage.holding_currency = False
+
+            if action == -1:
+                order = sell(PAIR)
+                if MASTER and LIVE:
+                    storage.holding_assets = False
+                    storage.holding_currency = True
+
+        except TradewaveFundsError as e:
+            log('TradewaveFundsError: %s' % e.message)
+        except TradewaveInvalidOrderError as e:
+            log('TradewaveInvalidOrderError: %s' % e.message)
+        except Exception as e:
+            log('Exception: %s' % e.message)
+        except:
+            log('Failed order - error unknown')
+
+    if MASTER and LIVE:
+        log('******** !!! BACKTEST TO CONFIRM TRADE !!! ********')
+
+# BENIGN LOG AND PLOT
+
+def report_subclass(mode, subclass):  # called from trade()
+
+    #if info.tick==0: log('report_subclass() v1.0')
+
+    n = subclass
+    if not storage.override:
+        msg=''
+        if mode==0: log('Mode.....: 0.00 Crypto Long Default')
+        if mode==1: log('Mode.....: 1.00 GREEN DRAGON (12h SMA 30>60>90)')
+        #11111111111111111111111111111111111111111111111111111111111111111111111111111111
+        if n == 1.00: 
+            msg = 'BUY STOPLOSS ASSETS "BEGIN GREEN DRAGON" '
+            if LIVE: msg += 'www.youtube.com/watch?v=WlpsPG3FTKM "the sky is the limit"'
+        if n == 1.10: msg = 'BUY STOPLOSS ASSETS "CRYPTO LONG DEFAULT"'
+        if n == 1.20: msg = 'BUY OVERSOLD "FAST MONEY"'
+        if n == 1.21: msg = 'SELL TYPE 1 OVERBOUGHT "FAST MONEY BULLTRAP"'
+        if n == 1.30: msg = 'SELL TYPE 2 OVERBOUGHT "BEYOND RESISTANCE"'
+        if n == 1.40: msg = 'BUY UNLIMITED "MOON LAUNCH SUPPORT CHECKPOINT"'
+        if n == 1.41: msg = 'SELL UNLIMITED "MOON LAUNCH SUPPORT CHECKPOINT"'
+        
+        if mode==2: log('Mode.....: 2.00 CAPITULATION (POST GREEN DRAGON)')
+        #22222222222222222222222222222222222222222222222222222222222222222222222222222222
+        if n == 2.00: 
+            msg = 'SELL STOPLOSS CURRENCY "END GREEN DRAGON" '
+            if LIVE: msg += 'www.youtube.com/watch?v=Dhu22Iy8fGk "harvester of sorrow"'
+        if n == 2.10: msg = 'BUY OVERSOLD "DESPAIR"'
+        if n == 2.11: msg = 'SELL UNLIMITED STOPLOSS CURRENCY "REKT"'     
+        if n == 2.20: msg = 'BUY UNLIMITED "BEAR CROSS CONSOLIDATION CHECKPOINT"'
+        if n == 2.22: msg = 'SELL UNLIMITED "BEAR CROSS CONSOLIDATION CHECKPOINT"'
+        if n == 2.21: msg = 'SELL UNLIMITED OVERBOUGHT "FINAL RUN OF THE BULLS"'       
+
+        if mode==3: log('Mode.....: 3.00 RED DRAGON (12h SMA 90>60>30)')
+        #33333333333333333333333333333333333333333333333333333333333333333333333333333333
+        if n == 3.00: 
+            msg = 'SELL STOPLOSS CURRENCY "BEGIN RED DRAGON" '
+            if LIVE: msg += 'www.youtube.com/watch?v=MAcZT4g-f_s "midsummer night`s dream"'
+        if n == 3.11: msg = 'BUY UNLIMITED TYPE 1 OVERSOLD "PURGATORY"'
+        if n == 3.12: msg = 'BUY UNLIMITED TYPE 2 OVERSOLD "CRYPTO IS DEAD"'
+        if n == 3.13: msg = 'BUY UNLIMITED TYPE 3 OVERSOLD "MOP BLOOD"'
+        if n == 3.14: msg = 'BUY UNLIMITED TYPE 4 OVERSOLD "CHASE THE SERPENT"'
+        if n == 3.15: msg = 'BUY UNLIMITED TYPE 5 OVERSOLD "GOXXXED"'
+        if n == 3.49: msg = 'SELL UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"'
+        if n == 3.51: msg = 'BUY UNLIMITED "BLOODY RIVER RESISTANCE CHECKPOINT"'
+        if n == 3.20: msg = 'SELL TYPE 1 OVERBOUGHT "OVER THE TOP"'
+        if n == 3.21: msg = 'SELL TYPE 2 OVERBOUGHT "WASH BLOODY HANDS"'
+        
+        if mode==4: log('Mode.....: 4.00 CAT BOUNCE (POST RED DRAGON)')
+        #44444444444444444444444444444444444444444444444444444444444444444444444444444444
+        if n == 4.00: 
+            msg = 'BUY UNLIMITED STOPLOSS ASSETS "END RED DRAGON" '
+            if LIVE: msg += 'https://www.youtube.com/watch?v=Oy2bwwIsS40 "honey"'
+        if n == 4.10: msg = 'SELL UNLIMITED "HONEY CONSOLIDATION CHECKPOINT"'
+        if n == 4.11: msg = 'BUY UNLIMITED "HONEY CONSOLIDATION CHECKPOINT"'
+        if n == 4.20: msg = 'SELL UNLIMITED OVERBOUGHT "TOO HIGH TOO FAST"'
+        
+        log(('Subclass.: %.2f ' % n) + msg)
+        
+def report():  # called from tick()
+
+
+    #if info.tick==0: log('report() v1.0')
+
+    if LIVE:
+
+        n = (43200 / info.interval)
+    
+        # ANNOUNCE SYNCHRONIZATION
+        if storage.algo_tick == 0:
+            if SLAVE and LIVE:
+                log('SYNCHRONIZATION COMPLETE!')
+    
+        # EQUITY LIMIT WARNING
+        if SLAVE and LIVE:
+            if (storage.potential_currency > 0.9 * storage.equity_limit):
+                log('********* EQUITY LIMIT WARNING **********' +
+                    '%.2f of %.2f' % (storage.potential_currency, storage.equity_limit))
+    
+        # DAILY REPORT SIMPLE - LIVE
+        if storage.algo_tick % (n * 2) == 0:
+            if LIVE:
+                log('Price: %.3f' % data[PAIR].price)
+                account_balances()
+
+def liability_waiver():  # called from stop() and
+
+    if info.tick==0: log('liability_waiver() v1.0')
+
+    if SLAVE:
+        
+        log('This bot was built with due diligence; in good faith. ' +
+            'CAVEAT EMPTOR: This is experimental, speculative software! ' +
+            'I assume ZERO liability for your use of this signal. ' +
+            '...but I`ll gladly take a fat tip! ')
+            
+def initialization_keys():
+    
+    #if info.tick==0: log('initialization_keys() v1.0')
+    
+    log('GREEN_DRAGON = %s' % int(storage.green_dragon))
+    log('RED_DRAGON = %s' % int(storage.red_dragon))
+    log('LAST_DRAGON = %s' % int(storage.last_dragon))
+    log('MODE = %.2f' % storage.mode)
+    log('SUBCLASS = %.2f' % storage.subclass)
+    log('NEW_SUBCLASS = %.2f' % storage.new_subclass)
+    log('PANIC_SELL = %s' % int(storage.panic_sell))
+    log('PANIC_BUY = %s' % int(storage.panic_buy))
+
+def report_keys():  # called from tick() and stop()
+
+    #if info.tick==0: log('report_keys() v1.0')
+
+    log('%sG %sR %sL :: %.2fM %.2fS %.2fN :: %sS %sB :: ' %
+        (int(storage.green_dragon),
+         int(storage.red_dragon),
+         int(storage.last_dragon),
+         storage.mode,
+         storage.subclass,
+         storage.new_subclass,
+         int(storage.panic_sell),
+         int(storage.panic_buy)) +
+
+        '2 %.2f %.2f : 3 %.2f %.2f : 30 %.2f %.2f :: ' %
+        (storage.ma2,
+         storage.ma2s,
+         storage.ma3,
+         storage.ma3s,
+         storage.ma30,
+         storage.ma30s) +
+
+        '55T %.2f : 55B %.2f : 55S %.2f :: R2 %.2f :: ' %
+        (storage.top,
+         storage.bottom,
+         storage.ma55s,
+         (1.2 * storage.resistance)) +
+
+        '60 %.2f %.2f : 90 %.2f %.2f : 150 %.2f %.2f :: %sO %sZ' %
+        (storage.ma60,
+         storage.ma60s,
+         storage.ma90,
+         storage.ma90s,
+         storage.ma150,
+         storage.ma150s,
+         storage.override,
+         storage.Z)
+        )
+    
+    indicators = {  '2':storage.ma2,
+                    '3':storage.ma3,
+                    '30':storage.ma30,
+                    '55T':(storage.top),
+                    '55B':(storage.bottom),
+                    '60':storage.ma60,
+                    '90':storage.ma90,
+                    '150':storage.ma150,
+                    '150C':(storage.ma150*1.4),
+                    'R2':(storage.resistance*1.2),
+                    'H': storage.high[-1],
+                    'L': storage.low[-1],
+                    'C': storage.close[-1],
+                    'O': storage.Open[-1] }
+    slopes = {      '0':0,
+                    '30s':storage.ma30s,
+                    '60s':storage.ma60s,
+                    '90s':storage.ma90s,
+                    '150s':storage.ma150s }
+    orientation = ''               
+    for key, value in sorted(indicators.iteritems(), 
+        reverse=True, key=lambda (k,v): (v,k)):
+            orientation += (key + '>')
+    orientation = orientation[:-1]
+    orientation += ' - ' 
+    for key, value in sorted(slopes.iteritems(), 
+        reverse=True, key=lambda (k,v): (v,k)):
+            orientation += (key + '>')
+    orientation = orientation[:-1]    
+    
+    
+    log(orientation)
+
+def account_balances():  # called DAILY from report()
+
+    #if info.tick==0: log('account_balances() v1.0')
+
+    if LIVE and not storage.override:
+        log('Trades: %s Day: %.1f Freq: %.1f Price: %.2f' % (
+            int(storage.trades), storage.trading_days,
+            storage.trading_frequency, storage.mean_price))
+        log('%s ROI: %.1f / %.1f / %.1f = %.1f percent *** %s ROI: %.1f / %.1f / %.1f = %.1f percent' % (
+            storage.currency_CODE, storage.start_currency, storage.currency,
+            storage.potential_currency, storage.ROI_currency,
+            storage.asset_CODE, storage.start_assets, storage.assets,
+            storage.potential_assets, storage.ROI_assets))
+
+def chart():  # called from tick()
+
+    #if info.tick==0: log('chart() v1.0')
+
+    if (storage.algo_tick % storage.ratio12h == 0) or LIVE:
+        
+        plot('low', storage.low[-1])
+        plot('high', storage.high[-1])
+        plot('composite_close', storage.close[-1])
+        plot('ma2', storage.ma2)
+        plot('ma3', storage.ma3)
+        plot('ma30', storage.ma30)
+        plot('ma60', storage.ma60)
+        plot('ma90', storage.ma90)
+        plot('ma150', storage.ma150)
+        plot('150_ceiling', storage.ma150 * 1.4)
+        plot('resistance', 1.2 * storage.resistance)
+        plot('55_top', (storage.top))
+        plot('55_bottom', (storage.bottom))        
+
+        plot('ma30s', storage.ma30s, secondary=True)
+        plot('ma60s', storage.ma60s, secondary=True)
+        plot('ma90s', storage.ma90s, secondary=True)
+        plot('ma150s', storage.ma150s, secondary=True)
+        plot('cluster', storage.cluster, secondary=True)
+        plot('mode', -storage.mode, secondary=True)
+        plot('subclass', -storage.subclass, secondary=True)
+        plot('new_subclass', -storage.new_subclass, secondary=True)
+
+        # Plot Log Scale on 2h 4h and 12h candles
+        plot_log_scale = [7200, 14400, 43200]
+        if info.interval in plot_log_scale:
+            offset = -5
+            plot('log_high', math.log(data[PAIR].high, 10), secondary=True)
+            plot('log_low', math.log(data[PAIR].low, 10), secondary=True)
+            plot('log_90', math.log(storage.ma90, 10), secondary=True)
+            plot('log_signal', storage.log_signal, secondary=True)
+
+        if storage.algo_tick == 0:
+            plot('z', -30, secondary=True)
+
+# CYCLE AND END
+
+
+    
+   
+    
+def anti_drift():
+    
+    if info.tick==0: 
+        storage.start_time = time.time()
+        #log('tick() v1.0')
+    
+    if LIVE:
+        bot_time_elapsed = INTERVAL * storage.algo_tick
+        real_time_elapsed = time.time() - storage.start_time
+        clock_drift = (bot_time_elapsed - real_time_elapsed) / 3600
+        if clock_drift > 2:
+            log('WARNING!! Clock Drift: %.2f Hours')
+
+    # ALWAYS detect instruments and holdings
+    instrument()
+    holdings()
+
+    # SLAVE LIVE fetches indicators from master, all others call indicators()
+    if (storage.algo_tick==0) or not (SLAVE and LIVE):
+        indicators()
+
+    # On first actual algo tick run begin    
+    if storage.algo_tick == 0: begin()
+    
+    storage.time_check = info.current_time
+
+    # slave backtests and all masters quant indicators
+    if MASTER or (SLAVE and BACKTEST):
+        think()
+
+    # SLAVE syncs live to master
+    if (SLAVE and LIVE):
+        google_override()
+
+    # ALWAYS chart, trade, and report
+    trade()
+    chart()
+    report()
+
+    if LIVE or (storage.algo_tick % 12 == 0) or ((info.max_ticks-info.tick)<20):
+        report_keys()
+        
+def tick(): 
+
+    ########################################################################    
+    ########################################################################
+    version = 'anti_drift() v4.1'
+    # Create method anti_drift() and move your tick() there, 
+    # then replace your tick() function with this tick proxy
+    # anti_drift must be used live on 1m candles
+    # anti_drift will auto proxy to your declared INTERVAL sized candles
+    ########################################################################
+    # in live testing anti_drift() is more accurate than Tradewave clock
+    # if you expect hourly ticks, anti_drift() delivers hourly ticks
+    # to learn more about anti_drift() see:
+    # discuss.tradewave.net/t/lets-discuss-solutions-to-missing-ticks-clock-drift
+    ########################################################################
+    # be sure to consider your usage of:
+    #  - info.tick vs storage.algo_tick
+    #  - info.interval vs INTERVAL
+    # You must declare an INTERVAL in global constants; 1h = 3600
+    # You must also declare "storage.algo_tick=-1" in initialize()
+    # Always specify "timeout=" when placing limit orders 
+    # except for storage.algo_tick all object names hashed to avert conflict
+    ########################################################################
+    now = time.time()
+    key = str(int(info.begin*info.primary_pair/99991))
+    start_time = 'start_time_'+key 
+    tick_time = 'tick_time_'+key 
+    wave_tick = 'wave_tick_'+key 
+    api_fail = 'api_fail_'+key 
+    drift = 'drift_'+key 
+    percent_missing = 'percent_missing_'+key 
+    recent = 180 # depth minutes for percent missing 1m ticks check
+    if storage.algo_tick == -1: # tally of actual algorithm ticks
+        log(version)
+        log('Tick Interval in minutes Algorithm/Tradewave: %s / %s' % 
+            ((INTERVAL/60),(info.interval/60)))
+        storage[start_time] = now # initialization time
+        storage[tick_time] = now - INTERVAL # time of last algo_tick
+        storage[wave_tick] = -1 # tally of actual live tradwave ticks
+        storage[api_fail] = False # load 1st email alert   
+        storage[drift] = [] # recent list of missing_ticks on each wave_tick
+        for i in range(recent): # fill missing tick list with zeros
+            storage[drift].append(0)
+        storage[percent_missing] = 0
+    if BACKTEST: #advance tick tally and call your original tick()
+        storage.algo_tick += 1 
+        anti_drift()
+    if LIVE:
+        storage[wave_tick] += 1
+        elapsed = now-storage[start_time]
+        tick_elapsed = now-storage[tick_time]
+        should_tick = int(math.floor((elapsed + 30)/ INTERVAL)) #30 seconds leeway
+        unspent_ticks = should_tick-storage.algo_tick
+        # calculate percent missing ticks in 'recent' minutes
+        wave_drift = int((elapsed - storage[wave_tick]*info.interval)/60)
+        storage[drift].append(wave_drift)
+        storage[drift] = storage[drift][-recent:]
+        missing_ticks = int(100*(storage[drift][-1] - 
+            storage[drift][-recent])/recent) # percent 0 to 100   
+        if missing_ticks <= 3: storage[api_fail] = False  # reload email alert  
+        # if I have too many unspent algo ticks, kill bot
+        if unspent_ticks > 10:
+            email('Exchange is Down', subject='Restart Your Bot')
+            raise Stop()
+        # if I have more than one unspent tick, tell me 
+        if unspent_ticks > 1:
+            log('WARNING correcting clock drift: %s unspent_ticks' % 
+                unspent_ticks)
+        # CLOCK WARNING - log and email
+        message = ('%s ALERT! CLOCK DRIFT: %s percent missing 1m ticks in past %s minutes.'
+            % (version, missing_ticks,recent))
+        subject = ('WARNING! %s CLOCK FAILURE forward to sai@tradewave.net ASAP' 
+            % info.primary_exchange)
+        if missing_ticks >= 20: # % missing ticks in past "recent" minutes
+            if missing_ticks > storage[percent_missing]: #becoming worse
+                log(message)
+        if (missing_ticks >= 40) and (storage[api_fail] == False):
+            storage[api_fail] = True
+            log(subject)
+            message += (' Something is wrong with your exchange API connection.' +
+                ' Forward this message to sai@tradewave.net for support.')
+            email(message, subject)      
+        storage[percent_missing] = missing_ticks    
+        #if I have any unspent ticks and it has been at least half an interval
+        if (unspent_ticks > 0) and (tick_elapsed >= (math.floor(INTERVAL/2))):
+                storage.algo_tick += 1
+                storage[tick_time] = now
+                algo_drift = int((elapsed - storage.algo_tick*INTERVAL)/60)
+                log('Minutes of Clock Drift Algorithm/Tradewave:  %s / %s' % 
+                    (algo_drift, wave_drift))
+                anti_drift() # call your original tick() function
+    ########################################################################                
+    '''end anti_drift() tick proxy'''            
+    ########################################################################
+    ########################################################################
+                
+def stop():
+
+    if (storage.algo_tick >= 36):
+        ma2 = storage.ma2
+        end = info.current_time
+        days = float((end - storage.start) / 86400)
+        trades = (storage.trades)
+        if trades == 0:
+            frequency = 0
+        else:
+            frequency = days / trades
+
+        end_assets = storage.assets + storage.currency / ma2
+        end_currency = storage.currency + storage.assets * ma2
+
+        start_date = time.strftime(
+            '%Y-%m-%d %H:%M:%S', time.localtime(storage.start))
+
+        if MASTER:
+            log('*********************************')
+            initialization_keys()
+            log('*********************************')
+            report_keys()
+
+        if SLAVE: log('I appreciate your generosity:')
+        if SLAVE: log('BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME')
+        log('Version.......: %s' % VERSION)
+        log('Start Date....: %s' % start_date)
+        log('Tick Size.....: %s sec' % info.interval)
+        log('Start Assets..: %.2f %s' %
+            (storage.start_assets, storage.asset_CODE))
+        log('End Assets....: %.2f %s' % (end_assets, storage.asset_CODE))
+        log('Buy-n-Hold....: %.2f %s' %
+            ((storage.start_assets * ma2), storage.currency_CODE))
+        log('B-n-H Gain....: x%.2f' %
+            ((storage.start_assets * ma2) / (storage.start_currency)))
+        log('Crypto Gain...: x%.2f' % (end_assets / storage.start_assets))
+        log('Cash Gain.....: x%.2f' % (end_currency / storage.start_currency))
+        log('Days..........: %.1f' % days)
+        log('Trades........: %s' % trades)
+        log('Ticks.........: %s' % storage.algo_tick)
+        log('Price.........: %.3f' % ma2)
+        log('Days/Trades...: %.2f' % frequency)
+        log('Trade Types...: %s' % len(Counter(storage.trade_type)))
+        log('Trade Type %s' % Counter(storage.trade_type))
+        log('Z.............: %s' % storage.Z)
+        log('Composite.....: %s' % COMPOSITE)
+        if BACKTEST:
+            log('Run Time......: %.2f sec' %
+                float(time.time() - storage.start_time))
+            if SLAVE:
+                liability_waiver()
+
+
+             
