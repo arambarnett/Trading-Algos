@@ -1,0 +1,124 @@
+# Hurst Bands
+
+
+PAIR = info.primary_pair
+
+import numpy as np
+import math as ma
+import talib as ta
+
+LENGTH = 11 
+INNER = 1.6 
+OUTER = 2.6 
+EXTREME = 4.2 
+PLOT_EXTREME = True 
+PLOT_FILL = True
+PLOT_FLOW = True
+SMOOTH = 1 
+
+def tick():
+
+    # price =   (creates an array of "hl2" prices 100 deep)
+    high = data[PAIR].period(100,'high')
+    low = data[PAIR].period(100,'low')
+    price = np.array(((high+low)/2), dtype=float)
+    
+    # here we reference hl2 array @ index: "displacement"
+    displacement = (float(LENGTH)/2)+1
+    log(displacement)
+    try: dPrice = price[-displacement];  log( price[-displacement])
+    except: dPrice = 1/0 
+
+    close_array = data[PAIR].period(250,'close')
+    close_list = close_array.tolist()
+    storage.CMA = storage.get('CMA', close_list)
+    
+    if dPrice == dPrice: #if dPrice is a number:
+        storage.CMA.append(dPrice / ma.fabs(LENGTH)) #sma(dPrice, abs(length)) 
+        log('debug 1')
+        #not sure why needs absolute?!?
+        #not sure how to take simple moving average of a number?  
+        
+    if dPrice != dPrice: #if dPrice is not a number:
+        log('debug 2')
+        #                      2back        2back        3back
+        storage.CMA.append(    CMA[-1] + (CMA[-1] - CMA[-2])   )
+    storage.CMA=storage.CMA[-3:] # limit memory to last 3 values
+    
+    CMA = np.array(storage.CMA)
+    Extreme = CMA[-1] * EXTREME / 100
+    Outer   = CMA[-1] * OUTER / 100
+    Inner   = CMA[-1] * INNER / 100    
+    UpperExtreme = CMA[-1] + Extreme
+    LowerExtreme = CMA[-1] - Extreme
+    UpperOuter   = CMA[-1] + Outer
+    LowerOuter   = CMA[-1] - Outer
+    UpperInner   = CMA[-1] + Inner
+    LowerInner   = CMA[-1] - Inner    
+    
+    plot('CMA', CMA[-1], secondary=True)    
+    plot('UpperOuter', UpperOuter, secondary=True)
+    plot('LowerOuter', LowerOuter, secondary=True)
+    plot('UpperInner', UpperInner, secondary=True)
+    plot('LowerInner', LowerInner, secondary=True)      
+    
+    if PLOT_EXTREME:
+        plot('UpperExtreme', UpperExtreme, secondary=True)
+        plot('LowerExtreme', LowerExtreme, secondary=True)
+
+    if PLOT_FILL:
+        plot('UpperOuter', UpperInner, secondary=True)
+        plot('LowerInner', LowerOuter, secondary=True)  
+
+    if PLOT_FLOW:
+        if close_array[-1] > close_array[-2]: flow = data[PAIR].period(100, 'high')
+        elif close_array[-1] > close_array[-2]: flow = data[PAIR].period(100, 'low')
+        else: flow = price
+        
+        if SMOOTH == 1: plot('flow', flow[-1])
+        if (int(SMOOTH)==SMOOTH) and (SMOOTH > 1):
+            flow = ta.MA(flow, SMOOTH)
+            plot('flow', flow[-1])
+            
+            
+'''
+//
+// @author LazyBear
+//
+// If you use this code in its original/modified form, do drop me a note. 
+//
+study("Hurst Bands [LazyBear]", shorttitle="H%Bands_LB", overlay=true)
+price = hl2
+length = input(10, title="Displacement length")
+InnerValue = input(1.6, title="Innerbands %")
+OuterValue = input(2.6, title="Outerbands %")
+ExtremeValue = input(4.2, title="Extremebands %")
+showExtremeBands = input(false, type=bool, title="Display Extreme Bands?")
+showClosingPriceLine = input(false, type=bool, title="Plot Close price?")
+smooth = input(1, title="EMA Length for Close")
+
+displacement = (length / 2) + 1
+dPrice = price[displacement]
+
+CMA = not na(dPrice) ?  sma(dPrice, abs(length)) : nz(CMA[1]) + (nz(CMA[1]) - nz(CMA[2]))
+ 
+CenteredMA=plot(not na(dPrice) ? CMA : na, color=blue , linewidth=2)
+CenterLine=plot(not na(price) ? CMA : na, linewidth=2, color=aqua)
+
+ExtremeBand = CMA * ExtremeValue / 100
+OuterBand   = CMA * OuterValue / 100
+InnerBand   = CMA * InnerValue / 100
+
+UpperExtremeBand=plot(showExtremeBands and (not na(price)) ? CMA + ExtremeBand : na)
+LowerExtremeBand=plot(showExtremeBands and (not na(price)) ? CMA - ExtremeBand : na)
+UpperOuterBand=  plot(not na(price) ? CMA + OuterBand : na)
+LowerOuterBand=  plot(not na(price) ? CMA - OuterBand : na)
+UpperInnerBand=  plot(not na(price) ? CMA + InnerBand : na)
+LowerInnerBand=  plot(not na(price) ? CMA - InnerBand : na)
+
+fill(UpperOuterBand, UpperInnerBand, color=red, transp=85)
+fill(LowerInnerBand, LowerOuterBand, color=green, transp=85)
+
+FlowValue = close > close[1] ? high : close < close[1] ? low : hl2
+FlowPrice = plot(showClosingPriceLine ? sma(FlowValue, smooth) : na, linewidth=1)
+'''
