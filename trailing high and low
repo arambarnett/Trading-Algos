@@ -1,0 +1,68 @@
+
+
+PAIR = info.primary_pair
+
+def trailing_high_low(aggregation, depth):
+    
+    high = max(data(interval=aggregation)[PAIR].period(depth,'high'))
+    low = min(data(interval=aggregation)[PAIR].period(depth,'low'))
+    high_2 = max(data[PAIR][-2].period(depth,'high'))
+    low_2 = min(data[PAIR][-2].period(depth,'low'))    
+    
+    return high, low, high_2, low_2
+    
+def tick():
+
+    high, low, high_2, low_2 = trailing_high_low(14400, 5)
+    
+    plot('high', high)
+    plot('low', low)
+    
+    close=float(data[PAIR].close)
+
+    
+    high_trans = False
+    low_trans = False
+    
+    if high == high_2:
+        high_trans = True
+    if low == low_2:
+        low_trans = True
+        
+    if low_trans:
+        plot('low_trans', .98*low)
+    else:
+        plot('low_trans', low)
+    if high_trans:
+        plot('high_trans', 1.02*high)
+    else:
+        plot('high_trans', high)
+        
+    PIECES = 20   
+    
+    max_assets = float(portfolio.ltc)+float(portfolio.cny)/close
+    order = max_assets/PIECES
+    ratio = float(portfolio.ltc)/max_assets
+    inverse = 1-ratio
+    
+    if high_trans and not low_trans:
+        if portfolio.ltc > 0.2:
+            try:
+                sell(PAIR,amount=order)
+            except TradewaveFundsError:
+                sell(PAIR)
+            except: pass
+        
+        
+    if low_trans and not high_trans:
+        if portfolio.cny > 0.2*high:
+            try:
+                buy(PAIR,amount=order)
+            except TradewaveFundsError:
+                buy(PAIR)
+            except: pass        
+
+def stop():
+
+    sell(PAIR)
+        
