@@ -1,0 +1,69 @@
+''' 
+ZERO LAG (well, almost)
+By John Ehlers and Ric Way
+'''
+def initialize():
+    
+    storage.error           = 0
+    storage.leasterror      = 0
+    storage.gain            = 0
+    storage.bestgain        = 0
+    storage.EC              = None
+    storage.EMA             = None
+
+def tick():
+    
+    C                       = Decimal(data.btc_usd.warmup_period('close')[-1]) 
+    
+    length                  = Decimal(20) 
+    gainlimit               = Decimal(50)
+    alpha                   = Decimal(2) / (length + Decimal(1))
+    
+    if info.tick == 0:
+        storage.EMA         = C
+        storage.EC          = C
+    
+    EMA                     = alpha*C + (Decimal(1) - alpha)*storage.EMA
+    
+    storage.leasterror      = 1000000
+    
+    for value1 in range(-gainlimit, gainlimit):
+        
+        storage.gain        = value1/10
+        EC                  = alpha*(EMA + storage.gain*(C - storage.EC)) + (1 - alpha)*storage.EC
+        storage.error       = C - EC
+        if abs(storage.error) < storage.leasterror:
+            storage.leasterror      = abs(storage.error)
+            storage.bestgain        = storage.gain
+            
+    EC = alpha*(EMA + storage.gain*(C - storage.EC)) + (1 - alpha)*storage.EC
+    
+    EC = round(1000*EC)/1000
+    EMA = round(1000*EMA)/1000
+    storage.EC = Decimal(EC)
+    storage.EMA = Decimal(EMA)
+
+    
+    plot('EMA', EMA)
+    plot('EC', EC)
+    log('*****************')
+    log('EMA %s' % EMA)
+    log('EC %s' % EC)
+    
+    
+    '''    
+    alpha = 2 / (Length + 1);
+    EMA = alpha*Close + (1 - alpha)*EMA[1];
+    LeastError = 1000000;
+    For Value1 = -GainLimit to GainLimit Begin
+        Gain = Value1 / 10;
+        EC = alpha*(EMA + Gain*(Close - EC[1])) + (1 - alpha)*EC[1];
+        Error = Close - EC;
+        If AbsValue(Error) < LeastError Then Begin
+            LeastError = AbsValue(Error);
+            BestGain = Gain;
+    EC = alpha*(EMA + BestGain*(Close - EC[1])) + (1 - alpha)*EC[1];
+    '''
+
+
+    
