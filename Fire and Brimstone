@@ -1,0 +1,84 @@
+'''Fire and Brimstone Channel'''
+
+# Custom Zero Lag Moving Average
+# Step Function Support and Resistance
+# Price Normalized Momemtum
+# Bull/Bear Oscillator and additional plots
+
+'''litepresence June 2nd, 2014'''
+
+import talib
+from talib import MA_Type
+import numpy
+
+def initialize():
+    
+    storage.Z       = 0
+    storage.Zh      = 0
+    storage.Zl      = 0
+
+def tick():
+    
+    PAIR            = info.primary_pair  # PRIMARY TRADING PAIR
+    T               = 15         # PERIOD (10 to 40, default 30)
+    Z               = 0.025          # STEP (0.01 to 0.1, default 0.025)
+    
+    vwap            = data[PAIR].vwap(2)
+    H               = Decimal(data[PAIR].warmup_period('high')[-1])
+    L               = Decimal(data[PAIR].warmup_period('low')[-1]) 
+    C               = data[PAIR].warmup_period('close') 
+    
+    if storage.Z > Decimal(1+Z)*vwap:
+        storage.Z = vwap
+    elif Decimal(1+Z)*storage.Z < vwap:
+        storage.Z = vwap
+    if H > storage.Zh:
+        storage.Zh = H
+    if storage.Zh > Decimal(1+2*Z)*H:
+        storage.Zh = Decimal(1+Z)*H        
+    if L < storage.Zl:
+        storage.Zl = L
+    elif Decimal(1+2*Z)*storage.Zl < L:
+        storage.Zl = Decimal(1-Z)*L    
+
+    EMA1                = talib.MA(C, timeperiod=T, matype=1)
+    EMA2                = talib.MA(EMA1, timeperiod=T, matype=1)
+    DIFF                = EMA1[-1] - EMA2[-1]
+    ZLEMA               = EMA1[-1] + DIFF
+    REG                 = talib.LINEARREG(C, timeperiod=T)
+    MOM                 = talib.MOM(C, timeperiod=2*T)
+    MOM2                = talib.MOM(C, timeperiod=5*T)
+    LPZERO              = (REG[-1] + ZLEMA)/2
+    LPMOM               = LPZERO + MOM[-1]
+    LPMOM2              = LPZERO + MOM2[-1]
+    
+    LPZERO = Decimal(LPZERO)
+    ZL = Decimal(storage.Zl)
+    ZH = Decimal(storage.Zh)
+    ZMIN = min(ZL, LPMOM, LPMOM2)
+    ZMAX = max(ZH, LPMOM, LPMOM2)
+
+    plot('LPZERO', LPZERO)    
+    plot('Brimstone', ZMIN)
+    plot('Fire', ZMAX)
+    
+    plot('Support', ZL)    
+    plot('Resistance', ZH)
+    
+    #LPOSC               = LPZERO - EMA1[-1] 
+    #plot('LPOSC', LPOSC, secondary=True)
+    #plot('0', 0, secondary=True)
+    #plot('5', 5, secondary=True)
+    #plot('n5', -5, secondary=True)
+    
+    #plot('EMA1', EMA1[-1])
+    #plot('REG', REG[-1])
+    #plot('EMA2', EMA2[-1])
+    #plot('ZLEMA', ZLEMA)
+    #plot('VWAP',vwap)        
+    #plot('Z', storage.Z)
+    #plot('Zh', storage.Zh)
+    #plot('Zl', storage.Zl)
+    #plot('LPMOM', LPMOM)
+    #plot('LPMOM2', LPMOM2)
+    
