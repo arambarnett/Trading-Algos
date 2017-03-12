@@ -1,0 +1,47 @@
+import talib
+
+def sar_smooth(label, indicator, high, low):
+    
+    P = 10
+
+    if min(indicator[-P:]) < low:
+    
+        sar = min(indicator[-P:])
+    
+    else: # talib.MAX(indicator,3)[-1] > high:
+    
+        sar = max(indicator[-P:])
+        
+        
+
+        
+    return sar    
+
+def tick():
+    
+    # Period, Aggregation, Instrument, Data Array
+    period          = 10
+    IN              = 3600
+    instrument      = pairs.btc_usd
+    L               = data(interval=IN)[instrument].warmup_period('low')
+    H               = data(interval=IN)[instrument].warmup_period('high')
+    
+    
+    # Aggregated "Wiggly" TA-lib Arrays
+    SAR1             = talib.SAR(H, L, 0.02, 0.2)  
+    SAR2             = talib.SAR(H, L, 0.04, 0.4)  
+  
+    
+    # Aggregated "Wiggly" TA-lib Indicators
+    SAR1_now         = SAR1[-1]
+    SAR2_now         = SAR2[-1]
+    plot('SAR1', SAR1_now)
+    plot('SAR2', SAR2_now)  
+
+    
+    # Smoothed Aggregated TA-lib Indicators            
+    SAR1_now_S  = sar_smooth('SAR1', SAR1, H[-1], L[-1])
+    SAR2_now_S  = sar_smooth('SAR2', SAR2, H[-1], L[-1])
+    plot('SAR1_S', SAR1_now_S)
+    plot('SAR2_S', SAR2_now_S)    
+    
