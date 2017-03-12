@@ -1,0 +1,50 @@
+
+#This code is not functional; currently working out a bug.
+
+
+def tick():
+    
+    n = 30
+    A = data.btc_usd.ma(n)
+    
+    storage.Ai = storage.get('Ai', A)
+    storage.Aii = storage.get('Aii', A)
+    storage.Aiii = storage.get('Aiii', A)
+    storage.Aiiii = storage.get('Aiiii', A)
+    
+
+    Ai = storage.Ai
+    Aii = storage.Aii
+    Aiii = storage.Aiii
+    Aiiii = storage.Aiiii   
+
+    A_slope = A - Ai
+    Ai_slope = Ai - Aii
+    Aii_slope = Aii - Aiii
+    Aiii_slope = Aiii - Aiiii
+    A_concavity = A_slope - Ai_slope
+    Ai_concavity = Ai_slope - Aii_slope
+    Aii_concavity = Aii_slope - Aiii_slope
+    A_jerk = A_concavity - Ai_concavity
+    Ai_jerk = Ai_concavity - Aii_concavity
+    A_jounce = A_jerk - Ai_jerk
+    
+    storage.Ai = A
+    storage.Aii = storage.Ai
+    storage.Aiii = storage.Aii
+    storage.Aiiii = storage.Aiii
+    
+    plot('MA',              A)                                        # 0 Position
+    plot('Slope',           A_slope, secondary=True)                  # 1 Velocity
+    plot('Concavity',       Decimal(2)*A_concavity, secondary=True)   # 2 Acceleration
+    plot('Curl',            Decimal(0.5)*A_jerk, secondary=True)      # 3 Jerk    
+    plot('Jounce',          Decimal(0.5)*A_jounce, secondary=True)    # 4 Jounce
+    
+    
+    
+    if A_slope > 0.001:
+        if portfolio.usd>Decimal(.11)*data.btc_usd.vwap(2):
+            buy(pairs.btc_usd)
+    elif A_slope < -0.003:
+        if portfolio.btc:
+            sell(pairs.btc_usd)
