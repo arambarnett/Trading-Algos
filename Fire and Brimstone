@@ -5,7 +5,6 @@
 # Price Normalized Momemtum
 # Bull/Bear Oscillator and additional plots
 
-'''litepresence June 2nd, 2014'''
 
 import talib
 from talib import MA_Type
