@@ -1,9 +1,8 @@
 import numpy as np
 import talib
 
-SHEET_KEY = '1LGcvEpT_lBaoXToL3rH1AZbhq3vnK5GjhKTpiZbrov4'
-
-# https://docs.google.com/spreadsheets/d/1LGcvEpT_lBaoXToL3rH1AZbhq3vnK5GjhKTpiZbrov4/edit#gid=0
+SHEET_KEY = 
+# https://docs.google.com/spreadsheets/
 
 
 BEGIN = 1390292419 # Nov 1 2011
