@@ -1,71 +1,3 @@
-def banner():
-    
-    # Honey Badger v1.0 80X OPEN SOURCE Feb/17/2015
-    #
-    # litepresence
-    
-    '''
-    Your donations are appreciated and support development
-    BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME
-    '''
-
-    # UNTESTED LIVE - BETA - USE AT OWN RISK
-
-    '''
-    SUGGESTED LIVE TICK SIZE IS 1h
-    Please use tradewave forum for support
-    '''
-
-    # Trades 2, 3, 30, 55, 60, 90, 150 12h moving avereges
-    # (crossover and slope)
-    # Built for BTCUSD on 1h ticks
-    # 80X BTC return Dec 18 2011 to Feb 15 2015 on 12h tick
-    #
-    # *** Much thanks to Tradewave!
-    # This backtest engine is a BEAST! ***
-
-    # JAN 14th 2015 1h PWNED
-    # 191 BTCe
-    # 184 Bitstamp
-    # 203 Bitfinex
-    # 193 Coinsetter
-    # ----------------
-    # 193 average
-
-    # JAN 26th 2015 1h PWNED
-    # 294 BTCe
-    # 304 Bitstamp
-    # 305 Bitfinex
-    # 303 Coinsetter
-    # ----------------
-    # 301 average
-
-    # The Honey Badger is NASTY!
-
-    '''
-    DELUXE LOGIC PACKAGE AVAILABLE!
-
-    ~2000X BTC Dec 2011 to current
-
-    50k USD equity limit - 1 YEAR LEASE - 2 BTC
-
-    rpfpresence@gmail.com or tradewave private message
-    '''
-
-    # BEFORE INITIALIZING **ANY** BOT LIVE, RUN A BACKTEST UP TO
-    # THE MOST RECENT DATA, IN THE TICK SIZE YOU INTEND TO DEPLOY.
-    # WHATEVER THE BOT IS HOLDING AT THE END OF THE TEST,
-    # POSITION YOUR HOLDINGS **THE SAME** MANUALLY AT YOUR EXCHANGE
-    # BEFORE STARTING YOUR LIVE TRADER.
-
-    # TO ENSURE THE MOST SMOOTH ENTRANCE WITH **ANY** AUTOMATED TRADER,
-    # BEGIN TRADING LIVE **SHORTLY AFTER** THE BOT MAKES A TRADE IN
-    # BACKTEST MODE.
-
-    # WHEN THE LIVE BOT MAKES A TRADE, RUN A BACKTEST UP TO THE
-    # MOST RECENT DATA, IN THE SAME TICK SIZE AS YOU ARE TRADING
-    # TO CONFIRM THE CHANGE OF POSITION.
-
 import talib
 import time
 
@@ -538,10 +470,6 @@ def stop():
 
     log('***************************************')
     log('***************************************')
-    log('Honey Badger v1.0 80X by litepresence')
-    log('')
-    log('BTC: 1Hixnhbeh6H2wyqWnSxfAxARMVu7tBEmME')
-    report()
     log('SIG: %s' % SIG)
     log('LOG: %s' % LOG)
     log('Buy and Hold Gain.: %.1fX' % bnh_gain)
