@@ -1,0 +1,80 @@
+init: (context)->
+    context.vwap_buy_period = 6
+    context.vwap_sell_period = 10
+    context.aroon_buy = 0
+    context.aroon_sell = 0
+    context.aroon_period = 95
+    context.mfi = 40
+    context.mfi_period = 70
+    context.TICK = 0
+    context.CURRENCY_START = 0
+    context.ASSETS_START = 0
+serialize: (context)->
+    TICK: context.TICK
+    CURRENCY_START: context.CURRENCY_START
+    ASSETS_START: context.ASSETS_START
+handle: (context, data)->
+    instrument = data.instruments[0]
+    PRICE = (Math.round(1000*instrument.ema(2)))/1000
+    
+    results = talib.AROON
+        high: instrument.high
+        low: instrument.low
+        startIdx: 0
+        endIdx: instrument.close.length-1
+        optInTimePeriod: context.aroon_period
+    aroon_up = _.last(results.outAroonUp)
+    aroon_down = _.last(results.outAroonDown)
+
+    mfi_array = talib.MFI
+        high: instrument.high
+        low: instrument.low
+        close: instrument.close
+        volume: instrument.volumes
+        startIdx: 0
+        endIdx: instrument.close.length - 1
+        optInTimePeriod: context.mfi_period
+    mfi = _.last(mfi_array)
+    mfi = Math.round(mfi*100)/100
+
+    vwapbuy = Math.round(instrument.vwap(context.vwap_buy_period)*1000)/1000
+    vwapsell = Math.round(instrument.vwap(context.vwap_sell_period)*1000)/1000
+    
+    OFFSET = instrument.ema(100)-10
+    
+    plot
+        mfi: .05*mfi + OFFSET
+        aroon_up: .05*aroon_up + OFFSET
+        aroon_dwn: .05*aroon_down + OFFSET
+        vwapbuy : vwapbuy
+        vwapsell : vwapsell
+        
+    CURRENCY = (Math.round(100*portfolio.positions[instrument.curr()].amount))/100
+    ASSETS = (Math.round(100*portfolio.positions[instrument.asset()].amount))/100
+      
+    CURRENCY_LIMIT = (Math.round(100*(CURRENCY + (ASSETS*PRICE))))/100
+    ASSET_LIMIT = (Math.round(100*(ASSETS + (CURRENCY/PRICE))))/100    
+    
+    if context.TICK is 0
+        context.CURRENCY_START = CURRENCY_LIMIT
+        context.ASSET_START = ASSET_LIMIT
+    context.TICK++
+    ROI_C = (100*CURRENCY_LIMIT/context.CURRENCY_START) - 100
+    ROI_A = (100*ASSET_LIMIT/context.ASSET_START) - 100
+    DAY = (context.TICK/12).toFixed(2)
+    
+    debug 'Day: ' + DAY + ' Initial Capital: ' + context.CURRENCY_START + ' (' + context.ASSET_START+' Shares)'    
+    debug 'Price: ' + PRICE.toFixed(2) + ' Currency: $' + CURRENCY + '/' + CURRENCY_LIMIT + ' Assets: ' + ASSETS + '/' + ASSET_LIMIT
+    debug ROI_C.toFixed(2) + '% ROI Currency ' +  ROI_A.toFixed(2) + '% ROI Assets'
+    debug Math.round(10000*ASSETS/ASSET_LIMIT)/100 + '% of Currency Invested'
+    debug '********************************'
+    
+        
+        
+    if aroon_up - aroon_down > context.aroon_buy and PRICE < vwapbuy and CURRENCY > 0
+        buy instrument
+
+    else
+      if mfi > context.mfi and aroon_up - aroon_down < context.aroon_sell and PRICE > vwapsell and ASSETS > 0
+        sell instrument
+        
