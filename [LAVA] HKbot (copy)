@@ -1,10 +1,3 @@
-# LAVA Tradebot v0.2 - April 12th, 2015
-#
-# Ni6HTH4wK [LAVA]
-# BTC: 19P7bkzqSAwSm6X7tXmRVkx6AuBXEUZioo
-#
-# UNTESTED LIVE - BETA - USE AT OWN RISK
-
 PERIOD = 12 # Tick Lookback length
 PAIR = info.primary_pair
 
@@ -218,10 +211,7 @@ def stop():
 
     log('***************************************')
     log('***************************************')
-    log('    LAVA Tradebot v0.1 by Ni6HTH4wK    ')
-    log('')
-    log('        TIP YOUR DEALER PLEASE.        ')
-    log('BTC: 19P7bkzqSAwSm6X7tXmRVkx6AuBXEUZioo')
+    log('BTC: ')
     report()
     log('Buy and Hold Gain: %.2fX' % bnh_gain)
     log('LAVA BOT.........: %.2fX' % your_gain)
