@@ -2,8 +2,6 @@
 # Based on: http://www.oxfordstrat.com/trading-strategies/aroon-indicator-breakout-2/
 # Using Litepresence's Aroon Indicator MFI and VWAP and BREAKOUT
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-#
-# Please note this will not always make money - use at your own risk
 # You can change what plots using the variables below (i.e. PLOT_ICHI)
 # NOTE THE 5 - min Drop Bot is DISABLED by default so you can better backtest
 # Enable it using these instructions:
