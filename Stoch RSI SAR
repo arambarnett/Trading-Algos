@@ -1,7 +1,5 @@
 # Stoch RSI / SAR v2.0
 
-# litepresence
-
 STOCHRSI_PERIOD         = 18
 STOCHRSI_K              = 12
 STOCHRSI_D              = 14
